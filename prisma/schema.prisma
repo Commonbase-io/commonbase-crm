@@ -1,0 +1,278 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum StageOutcome {
+  OPEN
+  WON
+  LOST
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+model Org {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  slug       String   @unique
+  isPlatform Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  users        User[]
+  companies    Company[]
+  contacts     Contact[]
+  pipelines    Pipeline[]
+  stages       Stage[]
+  deals        Deal[]
+  dealContacts DealContact[]
+  notes        Note[]
+  auditLogs    AuditLog[]
+}
+
+model User {
+  id                 String    @id @default(uuid()) @db.Uuid
+  orgId              String    @db.Uuid
+  email              String    @unique
+  name               String
+  passwordHash       String
+  role               Role      @default(MEMBER)
+  isPlatformAdmin    Boolean   @default(false)
+  mustChangePassword Boolean   @default(false)
+  deactivatedAt      DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  org             Org         @relation(fields: [orgId], references: [id])
+  sessions        Session[]
+  ownedCompanies  Company[]   @relation("CompanyOwner")
+  ownedContacts   Contact[]   @relation("ContactOwner")
+  ownedDeals      Deal[]      @relation("DealOwner")
+  authoredNotes   Note[]      @relation("NoteAuthor")
+  auditLogs       AuditLog[]  @relation("AuditActor")
+
+  @@unique([id, orgId])
+  @@index([orgId, deactivatedAt])
+  @@index([orgId, role])
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model LoginAttempt {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String
+  ip        String
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ip, createdAt])
+}
+
+model Company {
+  id           String    @id @default(uuid()) @db.Uuid
+  orgId        String    @db.Uuid
+  name         String
+  domain       String?
+  phone        String?
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  region       String?
+  postalCode   String?
+  country      String?
+  notes        String?
+  ownerId      String    @db.Uuid
+  archivedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  org       Org       @relation(fields: [orgId], references: [id])
+  owner     User      @relation("CompanyOwner", fields: [ownerId, orgId], references: [id, orgId])
+  contacts  Contact[]
+  deals     Deal[]
+  noteRows  Note[]
+
+  @@unique([id, orgId])
+  @@index([orgId, archivedAt, name])
+  @@index([orgId, domain])
+  @@index([orgId, ownerId])
+  @@index([orgId, updatedAt])
+}
+
+model Contact {
+  id         String    @id @default(uuid()) @db.Uuid
+  orgId      String    @db.Uuid
+  firstName  String
+  lastName   String
+  email      String?
+  phone      String?
+  title      String?
+  companyId  String?   @db.Uuid
+  ownerId    String    @db.Uuid
+  notes      String?
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  org          Org           @relation(fields: [orgId], references: [id])
+  owner        User          @relation("ContactOwner", fields: [ownerId, orgId], references: [id, orgId])
+  company      Company?      @relation(fields: [companyId, orgId], references: [id, orgId])
+  dealContacts DealContact[]
+  noteRows     Note[]
+
+  @@unique([id, orgId])
+  @@index([orgId, archivedAt, lastName, firstName])
+  @@index([orgId, email])
+  @@index([orgId, companyId])
+  @@index([orgId, ownerId])
+}
+
+model Pipeline {
+  id         String    @id @default(uuid()) @db.Uuid
+  orgId      String    @db.Uuid
+  name       String
+  isDefault  Boolean   @default(false)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  org    Org     @relation(fields: [orgId], references: [id])
+  stages Stage[]
+
+  @@unique([id, orgId])
+  @@index([orgId, isDefault])
+}
+
+model Stage {
+  id         String       @id @default(uuid()) @db.Uuid
+  orgId      String       @db.Uuid
+  pipelineId String       @db.Uuid
+  name       String
+  position   Int
+  outcome    StageOutcome @default(OPEN)
+  archivedAt DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  org      Org      @relation(fields: [orgId], references: [id])
+  pipeline Pipeline @relation(fields: [pipelineId, orgId], references: [id, orgId])
+  deals    Deal[]
+
+  @@unique([id, orgId])
+  @@index([orgId, pipelineId, position])
+}
+
+model Deal {
+  id                String     @id @default(uuid()) @db.Uuid
+  orgId             String     @db.Uuid
+  name              String
+  amountCents       Int        @default(0)
+  currency          String     @default("USD")
+  stageId           String     @db.Uuid
+  companyId         String?    @db.Uuid
+  ownerId           String     @db.Uuid
+  expectedCloseDate DateTime?  @db.Date
+  status            DealStatus @default(OPEN)
+  archivedAt        DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  org          Org           @relation(fields: [orgId], references: [id])
+  stage        Stage         @relation(fields: [stageId, orgId], references: [id, orgId])
+  company      Company?      @relation(fields: [companyId, orgId], references: [id, orgId])
+  owner        User          @relation("DealOwner", fields: [ownerId, orgId], references: [id, orgId])
+  dealContacts DealContact[]
+  noteRows     Note[]
+
+  @@unique([id, orgId])
+  @@index([orgId, stageId, archivedAt])
+  @@index([orgId, ownerId])
+  @@index([orgId, companyId])
+  @@index([orgId, status, archivedAt])
+  @@index([orgId, name])
+}
+
+model DealContact {
+  orgId     String   @db.Uuid
+  dealId    String   @db.Uuid
+  contactId String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  org     Org     @relation(fields: [orgId], references: [id])
+  deal    Deal    @relation(fields: [dealId, orgId], references: [id, orgId])
+  contact Contact @relation(fields: [contactId, orgId], references: [id, orgId])
+
+  @@id([dealId, contactId])
+  @@index([orgId, contactId])
+}
+
+model Note {
+  id         String    @id @default(uuid()) @db.Uuid
+  orgId      String    @db.Uuid
+  body       String
+  authorId   String    @db.Uuid
+  companyId  String?   @db.Uuid
+  contactId  String?   @db.Uuid
+  dealId     String?   @db.Uuid
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  org     Org      @relation(fields: [orgId], references: [id])
+  author  User     @relation("NoteAuthor", fields: [authorId, orgId], references: [id, orgId])
+  company Company? @relation(fields: [companyId, orgId], references: [id, orgId])
+  contact Contact? @relation(fields: [contactId, orgId], references: [id, orgId])
+  deal    Deal?    @relation(fields: [dealId, orgId], references: [id, orgId])
+
+  @@index([orgId, companyId, createdAt])
+  @@index([orgId, contactId, createdAt])
+  @@index([orgId, dealId, createdAt])
+}
+
+model AuditLog {
+  id         String      @id @default(uuid()) @db.Uuid
+  orgId      String      @db.Uuid
+  actorId    String?     @db.Uuid
+  action     AuditAction
+  entityType String
+  entityId   String      @db.Uuid
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+
+  org   Org   @relation(fields: [orgId], references: [id])
+  actor User? @relation("AuditActor", fields: [actorId, orgId], references: [id, orgId])
+
+  @@index([orgId, entityType, entityId])
+  @@index([orgId, createdAt])
+}
