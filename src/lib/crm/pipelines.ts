@@ -13,6 +13,15 @@ async function defaultPipeline(tx: Tx) {
   return pipeline;
 }
 
+async function lockDefaultPipeline(tx: Tx) {
+  await tx.$queryRaw`
+    SELECT id FROM "Pipeline"
+    WHERE "isDefault" = true AND "archivedAt" IS NULL
+    FOR UPDATE
+  `;
+  return defaultPipeline(tx);
+}
+
 export async function getPipeline(session: SessionUser) {
   return withOrg(session.orgId, session.id, async (tx) => {
     const pipeline = await defaultPipeline(tx);
@@ -32,7 +41,7 @@ export async function getPipeline(session: SessionUser) {
 export async function createStage(session: SessionUser, input: { name: string; outcome: "OPEN" | "WON" | "LOST" }) {
   assertAdmin(session);
   return withOrg(session.orgId, session.id, async (tx) => {
-    const pipeline = await defaultPipeline(tx);
+    const pipeline = await lockDefaultPipeline(tx);
     const position = pipeline.stages.reduce((max, stage) => Math.max(max, stage.position), -1) + 1;
     const stage = await tx.stage.create({
       data: {
@@ -101,7 +110,7 @@ export async function updateStage(
 export async function reorderStages(session: SessionUser, stageIds: string[]) {
   assertAdmin(session);
   return withOrg(session.orgId, session.id, async (tx) => {
-    const pipeline = await defaultPipeline(tx);
+    const pipeline = await lockDefaultPipeline(tx);
     const currentIds = pipeline.stages.map((stage) => stage.id);
     const same =
       currentIds.length === stageIds.length && currentIds.every((id) => stageIds.includes(id)) && new Set(stageIds).size === stageIds.length;

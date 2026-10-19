@@ -1,6 +1,6 @@
 import { writeAudit } from "@/lib/crm/audit";
 import type { SessionUser } from "@/lib/auth/session";
-import { isPrismaNotFound, withOrg, type Tx } from "@/lib/db";
+import { isPrismaNotFound, isUniqueViolation, withOrg, type Tx } from "@/lib/db";
 import { HttpError, NotFoundError } from "@/lib/errors";
 import type { ContactInput, ListQuery } from "@/lib/validation";
 
@@ -108,6 +108,19 @@ export async function getContact(session: SessionUser, id: string) {
 }
 
 export async function createContact(session: SessionUser, input: ContactInput) {
+  try {
+    return await createContactInOrg(session, input);
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new HttpError(400, "A contact with this email already exists", {
+        email: "A contact with this email already exists",
+      });
+    }
+    throw error;
+  }
+}
+
+async function createContactInOrg(session: SessionUser, input: ContactInput) {
   return withOrg(session.orgId, session.id, async (tx) => {
     const ownerId = await resolveOwner(tx, session, input.ownerId);
     await assertCompany(tx, input.companyId);
@@ -139,6 +152,19 @@ export async function createContact(session: SessionUser, input: ContactInput) {
 }
 
 export async function updateContact(session: SessionUser, id: string, input: ContactInput) {
+  try {
+    return await updateContactInOrg(session, id, input);
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new HttpError(400, "A contact with this email already exists", {
+        email: "A contact with this email already exists",
+      });
+    }
+    throw error;
+  }
+}
+
+async function updateContactInOrg(session: SessionUser, id: string, input: ContactInput) {
   return withOrg(session.orgId, session.id, async (tx) => {
     const current = await tx.contact.findFirst({ where: { id, archivedAt: null }, select: { id: true } });
     if (!current) throw new NotFoundError();

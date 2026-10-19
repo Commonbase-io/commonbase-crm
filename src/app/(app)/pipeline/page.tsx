@@ -11,6 +11,7 @@ export default async function PipelinePage() {
         <h1>Pipeline</h1>
       </div>
       <p className="muted">Drag a deal to another stage. If someone else moved it first, the board keeps their stage.</p>
+      {board.truncated ? <p className="form-error">The board shows the 500 most recently updated deals.</p> : null}
       <PipelineBoard stages={board.stages} deals={board.deals} />
     </section>
   );

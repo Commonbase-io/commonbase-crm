@@ -1,6 +1,6 @@
 import { writeAudit } from "@/lib/crm/audit";
 import type { SessionUser } from "@/lib/auth/session";
-import { isPrismaNotFound, withOrg, type Tx } from "@/lib/db";
+import { isPrismaNotFound, isUniqueViolation, withOrg, type Tx } from "@/lib/db";
 import { HttpError, NotFoundError } from "@/lib/errors";
 import type { CompanyInput, ListQuery } from "@/lib/validation";
 
@@ -113,6 +113,19 @@ export async function getCompany(session: SessionUser, id: string) {
 }
 
 export async function createCompany(session: SessionUser, input: CompanyInput) {
+  try {
+    return await createCompanyInOrg(session, input);
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new HttpError(400, "A company with this domain already exists", {
+        domain: "A company with this domain already exists",
+      });
+    }
+    throw error;
+  }
+}
+
+async function createCompanyInOrg(session: SessionUser, input: CompanyInput) {
   return withOrg(session.orgId, session.id, async (tx) => {
     const owner = await resolveOwner(tx, session, input.ownerId);
     await assertDomainAvailable(tx, input.domain);
@@ -146,6 +159,19 @@ export async function createCompany(session: SessionUser, input: CompanyInput) {
 }
 
 export async function updateCompany(session: SessionUser, id: string, input: CompanyInput) {
+  try {
+    return await updateCompanyInOrg(session, id, input);
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new HttpError(400, "A company with this domain already exists", {
+        domain: "A company with this domain already exists",
+      });
+    }
+    throw error;
+  }
+}
+
+async function updateCompanyInOrg(session: SessionUser, id: string, input: CompanyInput) {
   return withOrg(session.orgId, session.id, async (tx) => {
     const current = await tx.company.findFirst({ where: { id, archivedAt: null } });
     if (!current) throw new NotFoundError();

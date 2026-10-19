@@ -2,7 +2,7 @@ import { neutralizeCsvCell, parseCsv } from "@/lib/csv";
 import { writeAudit } from "@/lib/crm/audit";
 import type { ImportRow } from "@/lib/import-shared";
 import type { SessionUser } from "@/lib/auth/session";
-import { withOrg } from "@/lib/db";
+import { withOrg, type Tx } from "@/lib/db";
 import { normalizeDomain, normalizeEmail, type ImportInput } from "@/lib/validation";
 
 const MAX_ROWS = 2000;
@@ -94,23 +94,25 @@ export async function importCompanies(session: SessionUser, input: ImportInput) 
           continue;
         }
       }
-      const company = await tx.company.create({
-        data: {
-          orgId: session.orgId,
-          name: row.values.name,
-          domain,
-          phone: row.values.phone || null,
-          addressLine1: row.values.addressLine1 || null,
-          addressLine2: row.values.addressLine2 || null,
-          city: row.values.city || null,
-          region: row.values.region || null,
-          postalCode: row.values.postalCode || null,
-          country: row.values.country || null,
-          notes: row.values.notes || null,
-          ownerId: session.id,
-        },
-        select: { id: true },
+      const companyId = await insertCompany(tx, {
+        orgId: session.orgId,
+        name: row.values.name,
+        domain,
+        phone: row.values.phone || null,
+        addressLine1: row.values.addressLine1 || null,
+        addressLine2: row.values.addressLine2 || null,
+        city: row.values.city || null,
+        region: row.values.region || null,
+        postalCode: row.values.postalCode || null,
+        country: row.values.country || null,
+        notes: row.values.notes || null,
+        ownerId: session.id,
       });
+      if (!companyId) {
+        rows.push({ ...row, status: "duplicate", errors: ["Duplicate domain in this organization"] });
+        continue;
+      }
+      const company = { id: companyId };
       await writeAudit(tx, {
         orgId: session.orgId,
         actorId: session.id,
@@ -210,20 +212,22 @@ export async function importContacts(session: SessionUser, input: ImportInput) {
         rows.push({ ...row, status: "invalid", errors: ["No company with this domain in your organization"] });
         continue;
       }
-      const contact = await tx.contact.create({
-        data: {
-          orgId: session.orgId,
-          firstName: row.values.firstName,
-          lastName: row.values.lastName,
-          email,
-          phone: row.values.phone || null,
-          title: row.values.title || null,
-          companyId: companyId ?? null,
-          notes: row.values.notes || null,
-          ownerId: session.id,
-        },
-        select: { id: true },
+      const contactId = await insertContact(tx, {
+        orgId: session.orgId,
+        firstName: row.values.firstName,
+        lastName: row.values.lastName,
+        email,
+        phone: row.values.phone || null,
+        title: row.values.title || null,
+        companyId: companyId ?? null,
+        notes: row.values.notes || null,
+        ownerId: session.id,
       });
+      if (!contactId) {
+        rows.push({ ...row, status: "duplicate", errors: ["Duplicate email in this organization"] });
+        continue;
+      }
+      const contact = { id: contactId };
       await writeAudit(tx, {
         orgId: session.orgId,
         actorId: session.id,
@@ -237,4 +241,73 @@ export async function importContacts(session: SessionUser, input: ImportInput) {
     }
     return { headers: preview.headers, rows, created, error: null };
   });
+}
+
+type CompanyInsert = {
+  orgId: string;
+  name: string;
+  domain: string | null;
+  phone: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  region: string | null;
+  postalCode: string | null;
+  country: string | null;
+  notes: string | null;
+  ownerId: string;
+};
+
+async function insertCompany(tx: Tx, input: CompanyInsert): Promise<string | null> {
+  if (!input.domain) {
+    const company = await tx.company.create({ data: input, select: { id: true } });
+    return company.id;
+  }
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`
+    INSERT INTO "Company" (
+      id, "orgId", name, domain, phone, "addressLine1", "addressLine2",
+      city, region, "postalCode", country, notes, "ownerId", "createdAt", "updatedAt"
+    ) VALUES (
+      gen_random_uuid(), ${input.orgId}::uuid, ${input.name}, ${input.domain}, ${input.phone},
+      ${input.addressLine1}, ${input.addressLine2}, ${input.city}, ${input.region},
+      ${input.postalCode}, ${input.country}, ${input.notes}, ${input.ownerId}::uuid, now(), now()
+    )
+    ON CONFLICT ("orgId", "domain") WHERE "domain" IS NOT NULL AND "archivedAt" IS NULL
+    DO NOTHING
+    RETURNING id
+  `;
+  return rows[0]?.id ?? null;
+}
+
+type ContactInsert = {
+  orgId: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  title: string | null;
+  companyId: string | null;
+  notes: string | null;
+  ownerId: string;
+};
+
+async function insertContact(tx: Tx, input: ContactInsert): Promise<string | null> {
+  if (!input.email) {
+    const contact = await tx.contact.create({ data: input, select: { id: true } });
+    return contact.id;
+  }
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`
+    INSERT INTO "Contact" (
+      id, "orgId", "firstName", "lastName", email, phone, title, "companyId",
+      notes, "ownerId", "createdAt", "updatedAt"
+    ) VALUES (
+      gen_random_uuid(), ${input.orgId}::uuid, ${input.firstName}, ${input.lastName}, ${input.email},
+      ${input.phone}, ${input.title}, ${input.companyId}::uuid, ${input.notes}, ${input.ownerId}::uuid,
+      now(), now()
+    )
+    ON CONFLICT ("orgId", "email") WHERE "email" IS NOT NULL AND "archivedAt" IS NULL
+    DO NOTHING
+    RETURNING id
+  `;
+  return rows[0]?.id ?? null;
 }

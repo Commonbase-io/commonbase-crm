@@ -69,6 +69,11 @@ export async function createUser(session: SessionUser, input: UserCreateInput) {
 export async function updateUser(session: SessionUser, id: string, input: UserPatchInput) {
   assertAdmin(session);
   return withOrg(session.orgId, session.id, async (tx) => {
+    await tx.$queryRaw`
+      SELECT id FROM "User"
+      WHERE "orgId" = ${session.orgId}::uuid AND role = 'ADMIN' AND "deactivatedAt" IS NULL
+      FOR UPDATE
+    `;
     const user = await tx.user.findFirst({ where: { id } });
     if (!user) throw new NotFoundError();
     if (input.deactivated && user.id === session.id) {

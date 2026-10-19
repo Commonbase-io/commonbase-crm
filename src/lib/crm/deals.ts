@@ -288,8 +288,10 @@ export async function getBoard(session: SessionUser) {
       include: { stages: { where: { archivedAt: null }, orderBy: { position: "asc" } } },
     });
     if (!pipeline) throw new NotFoundError();
+    const where = { archivedAt: null, stage: { pipelineId: pipeline.id, archivedAt: null } };
+    const total = await tx.deal.count({ where });
     const deals = await tx.deal.findMany({
-      where: { archivedAt: null, stage: { pipelineId: pipeline.id, archivedAt: null } },
+      where,
       include: { company: true, owner: true },
       orderBy: { updatedAt: "desc" },
       take: 500,
@@ -300,6 +302,6 @@ export async function getBoard(session: SessionUser) {
       position: stage.position,
       outcome: stage.outcome,
     }));
-    return { pipelineId: pipeline.id, stages, deals: deals.map(serializeBoardDeal) };
+    return { pipelineId: pipeline.id, stages, deals: deals.map(serializeBoardDeal), truncated: total > deals.length };
   });
 }
