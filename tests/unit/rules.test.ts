@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 import { moveDealOptimistic, reconcileDeal, type BoardDeal, type BoardStage } from "@/lib/crm/board";
-import { neutralizeCsvCell, parseCsv } from "@/lib/csv";
+import { neutralizeCsvCell, parseCsv, serializeCsv } from "@/lib/csv";
 import { dollarsToCents } from "@/lib/money";
 import { passwordRuleError } from "@/lib/auth/password-rule";
-import { companySchema, fieldErrorsFromZod } from "@/lib/validation";
+import { companySchema, dealSchema, fieldErrorsFromZod } from "@/lib/validation";
 
 describe("password rule", () => {
   it("requires 8 characters, a letter, and a digit", () => {
@@ -22,6 +22,9 @@ describe("money", () => {
     expect(dollarsToCents("1.2")).toBe(120);
     expect(dollarsToCents("1.234")).toBeNull();
     expect(dollarsToCents("-5")).toBeNull();
+    expect(dollarsToCents("20000000")).toBe(2_000_000_000);
+    expect(dollarsToCents("20000000.01")).toBeNull();
+    expect(dollarsToCents("999999999999.99")).toBeNull();
   });
 });
 
@@ -29,12 +32,29 @@ describe("csv", () => {
   it("neutralizes formula prefixes and parses quotes", () => {
     expect(neutralizeCsvCell("=1+1")).toBe("'=1+1");
     expect(neutralizeCsvCell("+1")).toBe("'+1");
+    expect(neutralizeCsvCell("+15550101")).toBe("+15550101");
     expect(neutralizeCsvCell("-2")).toBe("'-2");
     expect(neutralizeCsvCell("@sum")).toBe("'@sum");
+    expect(neutralizeCsvCell("\u200B=HYPERLINK(\"http://evil\")")).toBe("'=HYPERLINK(\"http://evil\")");
+    expect(neutralizeCsvCell("\u0000=1+1")).toBe("'=1+1");
+    expect(neutralizeCsvCell(" =1+1")).toBe("'=1+1");
+    expect(neutralizeCsvCell(" +15550101")).toBe("+15550101");
     expect(neutralizeCsvCell("Bakery")).toBe("Bakery");
+    expect(serializeCsv([["name", "phone"], ["=1+1", "+15550101"]])).toBe("name,phone\r\n'=1+1,+15550101");
+    expect(serializeCsv([["notes"], ['say, "hi"']])).toBe('notes\r\n"say, ""hi"""');
     const parsed = parseCsv('name,notes\n"Example, Bakery","line\nbreak"');
     expect(parsed.headers).toEqual(["name", "notes"]);
     expect(parsed.rows[0]).toEqual(["Example, Bakery", "line\nbreak"]);
+  });
+});
+
+describe("currency", () => {
+  it("accepts ISO codes and rejects made-up ones", () => {
+    const base = { name: "Retainer", amount: "10.00", stageId: "11111111-1111-4111-8111-111111111111" };
+    expect(dealSchema.safeParse({ ...base, currency: "usd" }).success).toBe(true);
+    expect(dealSchema.safeParse({ ...base, currency: "EUR" }).success).toBe(true);
+    const rejected = dealSchema.safeParse({ ...base, currency: "ABC" });
+    expect(rejected.success).toBe(false);
   });
 });
 

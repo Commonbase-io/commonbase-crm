@@ -1,8 +1,23 @@
 const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+const INVISIBLE = /[\u0000\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g;
+const PHONE = /^\+\d[\d\s().-]{6,}$/;
 
 export function neutralizeCsvCell(value: string): string {
-  if (FORMULA_PREFIX.test(value)) return `'${value}`;
-  return value;
+  const cleaned = value.replace(INVISIBLE, "");
+  const visible = cleaned.trimStart();
+  if (PHONE.test(visible)) return visible;
+  if (FORMULA_PREFIX.test(visible)) return `'${visible}`;
+  return cleaned;
+}
+
+function csvEscape(value: string): string {
+  const safe = neutralizeCsvCell(value);
+  if (/[",\r\n]/.test(safe)) return `"${safe.replaceAll('"', '""')}"`;
+  return safe;
+}
+
+export function serializeCsv(rows: string[][]): string {
+  return rows.map((row) => row.map(csvEscape).join(",")).join("\r\n");
 }
 
 export function parseCsv(input: string): { headers: string[]; rows: string[][] } {

@@ -31,12 +31,12 @@ enum AuditAction {
 }
 
 model Org {
-  id         String   @id @default(uuid()) @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name       String
   slug       String   @unique
   isPlatform Boolean  @default(false)
   createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  updatedAt  DateTime @default(now()) @updatedAt
 
   users        User[]
   companies    Company[]
@@ -50,7 +50,7 @@ model Org {
 }
 
 model User {
-  id                 String    @id @default(uuid()) @db.Uuid
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId              String    @db.Uuid
   email              String    @unique
   name               String
@@ -60,7 +60,7 @@ model User {
   mustChangePassword Boolean   @default(false)
   deactivatedAt      DateTime?
   createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  updatedAt          DateTime  @default(now()) @updatedAt
 
   org             Org         @relation(fields: [orgId], references: [id])
   sessions        Session[]
@@ -76,7 +76,7 @@ model User {
 }
 
 model Session {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @db.Uuid
   tokenHash String   @unique
   expiresAt DateTime
@@ -89,7 +89,7 @@ model Session {
 }
 
 model LoginAttempt {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email     String
   ip        String
   success   Boolean
@@ -100,7 +100,7 @@ model LoginAttempt {
 }
 
 model Company {
-  id           String    @id @default(uuid()) @db.Uuid
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId        String    @db.Uuid
   name         String
   domain       String?
@@ -115,7 +115,7 @@ model Company {
   ownerId      String    @db.Uuid
   archivedAt   DateTime?
   createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  updatedAt    DateTime  @default(now()) @updatedAt
 
   org       Org       @relation(fields: [orgId], references: [id])
   owner     User      @relation("CompanyOwner", fields: [ownerId, orgId], references: [id, orgId])
@@ -131,7 +131,7 @@ model Company {
 }
 
 model Contact {
-  id         String    @id @default(uuid()) @db.Uuid
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId      String    @db.Uuid
   firstName  String
   lastName   String
@@ -143,7 +143,7 @@ model Contact {
   notes      String?
   archivedAt DateTime?
   createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  updatedAt  DateTime  @default(now()) @updatedAt
 
   org          Org           @relation(fields: [orgId], references: [id])
   owner        User          @relation("ContactOwner", fields: [ownerId, orgId], references: [id, orgId])
@@ -159,13 +159,13 @@ model Contact {
 }
 
 model Pipeline {
-  id         String    @id @default(uuid()) @db.Uuid
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId      String    @db.Uuid
   name       String
   isDefault  Boolean   @default(false)
   archivedAt DateTime?
   createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  updatedAt  DateTime  @default(now()) @updatedAt
 
   org    Org     @relation(fields: [orgId], references: [id])
   stages Stage[]
@@ -175,7 +175,7 @@ model Pipeline {
 }
 
 model Stage {
-  id         String       @id @default(uuid()) @db.Uuid
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId      String       @db.Uuid
   pipelineId String       @db.Uuid
   name       String
@@ -183,7 +183,7 @@ model Stage {
   outcome    StageOutcome @default(OPEN)
   archivedAt DateTime?
   createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  updatedAt  DateTime     @default(now()) @updatedAt
 
   org      Org      @relation(fields: [orgId], references: [id])
   pipeline Pipeline @relation(fields: [pipelineId, orgId], references: [id, orgId])
@@ -194,7 +194,7 @@ model Stage {
 }
 
 model Deal {
-  id                String     @id @default(uuid()) @db.Uuid
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId             String     @db.Uuid
   name              String
   amountCents       Int        @default(0)
@@ -206,7 +206,7 @@ model Deal {
   status            DealStatus @default(OPEN)
   archivedAt        DateTime?
   createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  updatedAt         DateTime   @default(now()) @updatedAt
 
   org          Org           @relation(fields: [orgId], references: [id])
   stage        Stage         @relation(fields: [stageId, orgId], references: [id, orgId])
@@ -238,7 +238,7 @@ model DealContact {
 }
 
 model Note {
-  id         String    @id @default(uuid()) @db.Uuid
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId      String    @db.Uuid
   body       String
   authorId   String    @db.Uuid
@@ -247,7 +247,7 @@ model Note {
   dealId     String?   @db.Uuid
   archivedAt DateTime?
   createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  updatedAt  DateTime  @default(now()) @updatedAt
 
   org     Org      @relation(fields: [orgId], references: [id])
   author  User     @relation("NoteAuthor", fields: [authorId, orgId], references: [id, orgId])
@@ -261,7 +261,7 @@ model Note {
 }
 
 model AuditLog {
-  id         String      @id @default(uuid()) @db.Uuid
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId      String      @db.Uuid
   actorId    String?     @db.Uuid
   action     AuditAction

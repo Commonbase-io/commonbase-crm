@@ -98,7 +98,7 @@ async function main() {
       companyId: company.id,
     },
   });
-  console.log("Seeded local demo org northwind-demo. Password for every user is Password1.");
+  console.log("Seeded local demo org northwind-demo.");
 }
 
 main()
