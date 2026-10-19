@@ -1,9 +1,9 @@
 import { getSessionFromRequest, type SessionUser } from "@/lib/auth/session";
 import { assertAdmin, assertPlatform } from "@/lib/authz";
 import { HttpError, NotFoundError } from "@/lib/errors";
-import { errorText } from "@/lib/db";
+import { errorText, internalErrorSummary } from "@/lib/db";
 import { json, notFound, validationFailed } from "@/lib/http";
-import { ZodError, type ZodType, type ZodTypeDef } from "zod";
+import { ZodError, z, type ZodType, type ZodTypeDef } from "zod";
 
 type Config<TBody, TQuery> = {
   body?: ZodType<TBody, ZodTypeDef, unknown>;
@@ -38,6 +38,7 @@ export function withApi<TBody = undefined, TQuery = undefined>(
         }
         if (config.admin) assertAdmin(session);
         if (config.platform) assertPlatform(session);
+        if (params.id && !z.string().uuid().safeParse(params.id).success) return notFound();
       }
 
       let body = undefined as TBody;
@@ -77,7 +78,7 @@ export function withApi<TBody = undefined, TQuery = undefined>(
       if (text.includes("slug_taken")) {
         return json({ error: "Slug is already in use", fieldErrors: { slug: "Slug is already in use" } }, 400);
       }
-      console.error(error);
+      console.error(internalErrorSummary(error));
       return json({ error: "Internal error" }, 500);
     }
   };

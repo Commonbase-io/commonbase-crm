@@ -46,6 +46,19 @@ export function isPrismaNotFound(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025";
 }
 
+export function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  if ("code" in error && (error as { code?: unknown }).code === "P2002") return true;
+  if ("cause" in error) return isUniqueViolation((error as { cause?: unknown }).cause);
+  return false;
+}
+
+export function internalErrorSummary(error: unknown): string {
+  const name = error instanceof Error ? error.name : "Error";
+  const code = error instanceof Prisma.PrismaClientKnownRequestError ? error.code : "";
+  return `request failed ${name}${code ? ` ${code}` : ""}`;
+}
+
 export function errorText(error: unknown): string {
   if (!error) return "";
   if (typeof error === "string") return error;

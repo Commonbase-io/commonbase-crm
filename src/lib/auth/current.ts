@@ -13,5 +13,6 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
 export async function requireSession(): Promise<SessionUser> {
   const session = await getSession();
   if (!session) redirect("/login");
+  if (session.mustChangePassword) redirect("/change-password");
   return session;
 }

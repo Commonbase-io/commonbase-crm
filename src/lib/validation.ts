@@ -94,6 +94,8 @@ export const contactSchema = z.object({
   ownerId: optionalOwner,
 });
 
+const CURRENCIES = new Set(Intl.supportedValuesOf("currency"));
+
 const amountField = z
   .string()
   .trim()
@@ -114,7 +116,7 @@ export const dealSchema = z.object({
     .trim()
     .nullish()
     .transform((value) => (value ? value.toUpperCase() : "USD"))
-    .refine((value) => /^[A-Z]{3}$/.test(value), "Use a 3-letter currency code"),
+    .refine((value) => CURRENCIES.has(value), "Use a real currency code"),
   stageId: z.string().uuid("Choose a stage"),
   companyId: optionalUuid,
   ownerId: optionalOwner,
@@ -148,11 +150,11 @@ const passwordField = z.string().superRefine((value, ctx) => {
 
 export const loginSchema = z.object({
   email: z.string().trim().min(1, "Email is required").max(320),
-  password: z.string().min(1, "Password is required"),
+  password: z.string().min(1, "Password is required").max(128, "Password must be 128 characters or fewer."),
 });
 
 export const passwordChangeSchema = z.object({
-  currentPassword: z.string().min(1, "Enter your current password"),
+  currentPassword: z.string().min(1, "Enter your current password").max(128, "Password must be 128 characters or fewer."),
   newPassword: passwordField,
 });
 

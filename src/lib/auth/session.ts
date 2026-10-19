@@ -6,6 +6,7 @@ export const SESSION_COOKIE = "crm_session";
 const SESSION_SECONDS = 60 * 60 * 24 * 14;
 const LOGIN_WINDOW_SECONDS = 15 * 60;
 const LOGIN_MAX_FAILURES = 5;
+const LOGIN_MAX_IP_FAILURES = 20;
 
 export type SessionUser = {
   id: string;
@@ -71,9 +72,18 @@ export function readCookie(request: Request, name: string): string | null {
 }
 
 export function clientIp(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  const ip = forwarded?.split(",")[0]?.trim() || "unknown";
-  return ip.slice(0, 64);
+  // A client can prepend any address to X-Forwarded-For. Only a deployment
+  // that sets TRUSTED_PROXY_HOPS uses the hop that proxy appended.
+  const hops = Number(process.env.TRUSTED_PROXY_HOPS ?? "0");
+  if (Number.isInteger(hops) && hops > 0) {
+    const parts = (request.headers.get("x-forwarded-for") ?? "")
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const selected = parts[parts.length - hops];
+    if (selected) return selected.slice(0, 64);
+  }
+  return "unknown";
 }
 
 function toSession(row: LookupSessionRow): SessionUser {
@@ -103,43 +113,54 @@ export async function getSessionFromRequest(request: Request): Promise<SessionUs
   return lookupSession(token);
 }
 
-async function failedCount(email: string): Promise<number> {
-  const rows = await prisma.$queryRaw<Array<{ failed_login_count: number }>>`
-    SELECT failed_login_count(${email}, ${LOGIN_WINDOW_SECONDS}) AS failed_login_count
-  `;
-  return Number(rows[0]?.failed_login_count ?? 0);
+async function countRows(rows: Array<{ count: number | null }>): Promise<number> {
+  return Number(rows[0]?.count ?? 0);
 }
 
 export async function login(email: string, password: string, ip: string) {
   const normalized = email.trim().toLowerCase();
-  if ((await failedCount(normalized)) >= LOGIN_MAX_FAILURES) {
-    return { ok: false as const, status: 429, error: "Too many attempts. Try again later." };
-  }
+  const limited = { ok: false as const, status: 429 as const, error: "Too many attempts. Try again later." };
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`login:${normalized}`})::bigint)`;
+    if (ip !== "unknown") {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`login-ip:${ip}`})::bigint)`;
+    }
+    const emailFailures = await countRows(
+      await tx.$queryRaw<Array<{ count: number }>>`SELECT failed_login_count(${normalized}, ${LOGIN_WINDOW_SECONDS}) AS count`,
+    );
+    if (emailFailures >= LOGIN_MAX_FAILURES) return limited;
+    if (ip !== "unknown") {
+      const ipFailures = await countRows(
+        await tx.$queryRaw<Array<{ count: number }>>`SELECT failed_login_count_ip(${ip}, ${LOGIN_WINDOW_SECONDS}) AS count`,
+      );
+      if (ipFailures >= LOGIN_MAX_IP_FAILURES) return limited;
+    }
 
-  const users = await prisma.$queryRaw<LookupUserRow[]>`SELECT * FROM lookup_user_by_email(${normalized})`;
-  const user = users[0];
-  const hash = user?.password_hash ?? (await dummyPasswordHash());
-  const valid = await verifyPassword(hash, password);
-  if (!user || !valid || user.deactivated) {
-    await prisma.$executeRaw`SELECT record_login_attempt(${normalized}, ${ip}, false)`;
-    return { ok: false as const, status: 401, error: "Invalid email or password." };
-  }
+    const users = await tx.$queryRaw<LookupUserRow[]>`SELECT * FROM lookup_user_by_email(${normalized})`;
+    const user = users[0];
+    const hash = user?.password_hash ?? (await dummyPasswordHash());
+    const valid = await verifyPassword(hash, password);
+    if (!user || !valid || user.deactivated) {
+      await tx.$executeRaw`SELECT record_login_attempt(${normalized}, ${ip}, false)`;
+      return { ok: false as const, status: 401 as const, error: "Invalid email or password." };
+    }
 
-  await prisma.$executeRaw`SELECT record_login_attempt(${normalized}, ${ip}, true)`;
-  const { token, tokenHash } = newSessionToken();
-  const expires = new Date(Date.now() + SESSION_SECONDS * 1000);
-  await prisma.$executeRaw`SELECT create_session(${user.user_id}::uuid, ${tokenHash}, ${expires})`;
-  return {
-    ok: true as const,
-    token,
-    user: {
-      id: user.user_id,
-      email: normalized,
-      name: user.user_name,
-      role: user.role,
-      mustChangePassword: user.must_change_password,
-    },
-  };
+    await tx.$executeRaw`SELECT record_login_attempt(${normalized}, ${ip}, true)`;
+    const { token, tokenHash } = newSessionToken();
+    const expires = new Date(Date.now() + SESSION_SECONDS * 1000);
+    await tx.$executeRaw`SELECT create_session(${user.user_id}::uuid, ${tokenHash}, ${expires})`;
+    return {
+      ok: true as const,
+      token,
+      user: {
+        id: user.user_id,
+        email: normalized,
+        name: user.user_name,
+        role: user.role,
+        mustChangePassword: user.must_change_password,
+      },
+    };
+  }, { timeout: 20_000 });
 }
 
 export async function logout(request: Request): Promise<void> {
@@ -168,11 +189,15 @@ export async function changePassword(session: SessionUser, currentPassword: stri
   const nextHash = await hashPassword(newPassword);
   const { withOrg } = await import("@/lib/db");
   const { writeAudit } = await import("@/lib/crm/audit");
+  const { token, tokenHash } = newSessionToken();
+  const expires = new Date(Date.now() + SESSION_SECONDS * 1000);
   await withOrg(session.orgId, session.id, async (tx) => {
     await tx.user.update({
       where: { id: session.id },
       data: { passwordHash: nextHash, mustChangePassword: false },
     });
+    await tx.$executeRaw`SELECT delete_user_sessions(${session.id}::uuid)`;
+    await tx.$executeRaw`SELECT create_session(${session.id}::uuid, ${tokenHash}, ${expires})`;
     await writeAudit(tx, {
       orgId: session.orgId,
       actorId: session.id,
@@ -182,5 +207,5 @@ export async function changePassword(session: SessionUser, currentPassword: stri
       metadata: { passwordChanged: true },
     });
   });
-  return { ok: true as const };
+  return { ok: true as const, token };
 }
