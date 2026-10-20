@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { SyncNow } from "@/components/dashboard/sync-now";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate } from "@/lib/format";
 import { can } from "@/server/auth/roles";
 import { requireTenantContext } from "@/server/auth/tenant-context";
 import { loadApolloIntegration, type IntegrationView } from "@/server/tenants/integrations";
+import { syncNowAction } from "./actions";
 
 export const metadata: Metadata = { title: "Integrations" };
 
@@ -18,6 +20,20 @@ const STATUS_TONE: Record<IntegrationView["status"], "success" | "warning" | "da
 };
 
 const PARTY = { client: "Client", commonbase: "Commonbase" } as const;
+
+const JOB_LABELS: Record<string, string> = {
+  "sync.opt_outs": "Opt-out sync",
+  "sync.email_activity": "Email activity sync",
+  "campaigns.reconcile_enrollments": "Enrollment reconciliation",
+};
+
+const JOB_TONE: Record<string, "success" | "warning" | "danger" | "neutral" | "info"> = {
+  succeeded: "success",
+  queued: "neutral",
+  running: "info",
+  failed: "warning",
+  dead: "danger",
+};
 
 export default async function IntegrationsPage({ params }: { params: Promise<{ tenantSlug: string }> }) {
   const { tenantSlug } = await params;
@@ -82,14 +98,20 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ t
         </div>
 
         <div>
-          <h3 className="text-sm font-semibold">Sync</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Sync</h3>
+            {can(ctx.role, "jobs.run") && apollo.status === "connected" ? <SyncNow action={syncNowAction} tenantSlug={ctx.tenantSlug} /> : null}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Opt-outs and email activity sync automatically on a schedule, and opt-outs also sync right before every enrollment.
+          </p>
           {apollo.syncs.length === 0 ? (
             <p className="mt-2 text-sm text-muted-foreground">No sync has run yet.</p>
           ) : (
             <ul className="mt-2 divide-y rounded-md border text-sm">
               {apollo.syncs.map((s) => (
                 <li key={s.kind} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                  <span>{s.kind.replace("_", " ")}</span>
+                  <span>{s.kind === "opt_outs" ? "Opt-outs" : s.kind === "email_activity" ? "Email activity" : s.kind.replace("_", " ")}</span>
                   <span className={s.status === "failed" ? "text-danger" : "text-muted-foreground"}>
                     {s.status === "failed" ? `Failed: ${s.lastError ?? "unknown error"}` : `Last success ${formatDate(s.lastSuccessAt)}`}
                   </span>
@@ -97,6 +119,29 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ t
               ))}
             </ul>
           )}
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold">Recent background jobs</h3>
+          {apollo.jobs.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">No jobs have run yet.</p>
+          ) : (
+            <ul className="mt-2 divide-y rounded-md border text-sm" aria-label="Recent background jobs">
+              {apollo.jobs.map((j) => (
+                <li key={j.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                  <span>{JOB_LABELS[j.type] ?? j.type}</span>
+                  <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {j.lastError && j.status !== "succeeded" ? <span className="text-danger">{j.lastError}</span> : null}
+                    <span>{formatDate(j.updatedAt)}</span>
+                    <Badge tone={JOB_TONE[j.status] ?? "neutral"}>{j.status === "dead" ? "gave up" : j.status}</Badge>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {apollo.jobs.some((j) => j.status === "dead") ? (
+            <p className="mt-2 text-xs text-muted-foreground">Jobs that gave up are recovered by “Sync now”, which queues fresh ones.</p>
+          ) : null}
         </div>
       </CardContent>
     </Card>

@@ -205,19 +205,25 @@ export function createMockApolloAdapters(input: {
         assertOwnSequence(sequenceId);
       },
       async getEmailActivity(filters: ActivityFilters): Promise<EmailActivity[]> {
-        const sinceDay = Math.floor(filters.since.getTime() / DAY_MS);
         const limit = Math.min(filters.limit ?? 50, 200);
         const events: EmailActivity[] = [];
-        for (let i = 0; i < Math.min(8, pool.length) && events.length < limit; i++) {
+        // Every person in the pool gets a send; some reply, fewer reply positively,
+        // and a few bounce, so whichever prospects a tenant saves see activity.
+        for (let i = 0; i < pool.length && events.length < limit; i++) {
           const entry = pool[i] as PoolEntry;
-          const types: EmailActivity["eventType"][] = i % 4 === 0 ? ["email_sent", "email_replied", "positive_reply"] : ["email_sent"];
+          const types: EmailActivity["eventType"][] = ["email_sent"];
+          if (i % 4 === 0) types.push("email_replied");
+          if (i % 8 === 0) types.push("positive_reply");
+          if (i % 15 === 7) types.push("email_bounced");
           types.forEach((eventType, j) => {
             events.push({
-              externalEventId: `mock-evt-${shortId(connectionId, String(sinceDay), String(i), eventType)}`,
+              // Stable per person and type, so overlapping sync windows dedupe.
+              externalEventId: `mock-evt-${shortId(connectionId, String(i), eventType)}`,
               externalContactId: entry.person.externalId,
               sequenceExternalId: null,
               eventType,
-              occurredAt: new Date((sinceDay + 1 + j) * DAY_MS).toISOString(),
+              // Shortly after the window opens, never in the future.
+              occurredAt: new Date(Math.min(filters.since.getTime() + (j + 1) * 3_600_000, Date.now())).toISOString(),
             });
           });
         }

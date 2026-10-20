@@ -31,7 +31,7 @@ The source of truth is `supabase/migrations/`. Generated TypeScript types are in
 | notes | Polymorphic target validated in the same tenant by trigger |
 | tasks | Owner, contact, and opportunity are all tenant-scoped |
 | idempotency_keys | PK `(tenant_id, key)` plus `request_hash`; no authenticated access |
-| jobs, sync_jobs | Postgres-backed queue and per-connection sync cursors |
+| jobs, sync_jobs | Postgres-backed queue (`dedupe_key` unique while queued or running; claimed via `claim_jobs()`) and per-connection sync state, whose `last_success_at` is the next sync's cursor |
 | audit_logs | Append only, even for the service role (a trigger blocks update and delete; tenant deletion cascades) |
 
 Deviations from the original spec, on purpose: `tenants.postal_address` and `config`; `provider_connections.mode`; `contacts.email_status`; `opportunities.title` and milestone columns; `campaigns.last_error`; `jobs.max_attempts`, `locked_at`, and `locked_by`; `idempotency_keys.request_hash`. Each one supports a stated requirement.

@@ -228,14 +228,14 @@ isOneToOne: false
                   ]
                 },"jobs": {
                   Row: {
-                    "attempts": number,"created_at": string,"id": string,"last_error": string | null,"locked_at": string | null,"locked_by": string | null,"max_attempts": number,"payload": NonNullable<Json>,"run_after": string,"status": string,"tenant_id": string,"type": string,"updated_at": string
+                    "attempts": number,"created_at": string,"dedupe_key": string | null,"id": string,"last_error": string | null,"locked_at": string | null,"locked_by": string | null,"max_attempts": number,"payload": NonNullable<Json>,"run_after": string,"status": string,"tenant_id": string,"type": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "attempts"?: number,"created_at"?: string,"id"?: string,"last_error"?: string | null,"locked_at"?: string | null,"locked_by"?: string | null,"max_attempts"?: number,"payload"?: NonNullable<Json>,"run_after"?: string,"status"?: string,"tenant_id": string,"type": string,"updated_at"?: string
+                    "attempts"?: number,"created_at"?: string,"dedupe_key"?: string | null,"id"?: string,"last_error"?: string | null,"locked_at"?: string | null,"locked_by"?: string | null,"max_attempts"?: number,"payload"?: NonNullable<Json>,"run_after"?: string,"status"?: string,"tenant_id": string,"type": string,"updated_at"?: string
                   }
                   Update: {
-                    "attempts"?: number,"created_at"?: string,"id"?: string,"last_error"?: string | null,"locked_at"?: string | null,"locked_by"?: string | null,"max_attempts"?: number,"payload"?: NonNullable<Json>,"run_after"?: string,"status"?: string,"tenant_id"?: string,"type"?: string,"updated_at"?: string
+                    "attempts"?: number,"created_at"?: string,"dedupe_key"?: string | null,"id"?: string,"last_error"?: string | null,"locked_at"?: string | null,"locked_by"?: string | null,"max_attempts"?: number,"payload"?: NonNullable<Json>,"run_after"?: string,"status"?: string,"tenant_id"?: string,"type"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -532,7 +532,32 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            [_ in never]: never
+            "claim_jobs":
+{ Args: { "p_limit"?: number,"p_stale_after"?: string,"p_tenant_id"?: string,"p_worker": string }; Returns: {
+              "attempts": number,
+"created_at": string,
+"dedupe_key": string | null,
+"id": string,
+"last_error": string | null,
+"locked_at": string | null,
+"locked_by": string | null,
+"max_attempts": number,
+"payload": NonNullable<Json>,
+"run_after": string,
+"status": string,
+"tenant_id": string,
+"type": string,
+"updated_at": string
+            }[]
+                          SetofOptions: {
+        from: "*"
+        to: "jobs"
+        isOneToOne: false
+        isSetofReturn: true
+      } },
+"enqueue_job":
+{ Args: { "p_dedupe_key"?: string,"p_payload"?: Json,"p_run_after"?: string,"p_tenant_id": string,"p_type": string }; Returns: string
+                           }
           }
           Enums: {
             [_ in never]: never

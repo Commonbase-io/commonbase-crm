@@ -50,7 +50,18 @@ Status changes use the service role (the authenticated role can't write `status`
 
 ## Background work
 
-The `jobs` and `sync_jobs` tables exist. The runner (simulated sync, opt-out sync, reconciliation) is the next build step. Trigger.dev comes after live sync is unblocked.
+A Postgres-backed queue (`jobs`) with a server-side runner (`src/server/jobs/`).
+
+- **Trigger:** `GET`/`POST /api/jobs/run`, authenticated only by `Authorization: Bearer $CRON_SECRET` (Vercel Cron, every 15 minutes in `vercel.json`). Admins and sales managers can also click **Sync now** on Settings → Integrations, which runs only their own tenant's jobs.
+- **Recurring jobs per connected tenant:** `sync.opt_outs` (provider opt-outs into suppression), `sync.email_activity` (provider email events into `activities`; bounces are suppressed), and `campaigns.reconcile_enrollments` (re-sends contacts left `enrolling` for over 10 minutes; never reactivates a failed campaign).
+- **Queue rules** (migration `..._job_runner.sql`):
+  - `enqueue_job()` dedupes on `(tenant_id, dedupe_key)` while a job is queued or running.
+  - `claim_jobs()` claims atomically with `FOR UPDATE SKIP LOCKED` and recovers jobs whose worker died (stale lock).
+  - Both functions are executable by the service role only.
+- **Retries:** exponential backoff (1, 2, 4 … 60 minutes), then `dead` after `max_attempts`. Failures and errors (redacted) show on the Integrations page; "Sync now" queues fresh jobs to recover.
+- **Isolation:** every handler builds its adapter from the job's own tenant through the provider registry. A tenant-scoped run refuses any job from another tenant.
+
+Trigger.dev replaces the cron trigger when live sync is unblocked; the handlers stay the same.
 
 ## Logging
 

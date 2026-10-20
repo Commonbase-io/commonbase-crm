@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import type { TenantContext } from "@/server/auth/tenant-context";
 import { assertCan } from "@/server/auth/roles";
-import { audit } from "@/server/audit";
+import { audit, type AuditScope } from "@/server/audit";
 import { syncOptOuts } from "@/server/compliance/opt-out-sync";
 import { redactString } from "@/server/compliance/redact";
 import { checkCampaignCompliance, type ComplianceProblem } from "@/server/compliance/template-check";
@@ -42,6 +42,9 @@ export class CampaignStateError extends Error {
 }
 
 type UserClient = Awaited<ReturnType<typeof createUserClient>>;
+type AdminClient = ReturnType<typeof createAdminClient>;
+/** Tenant (and acting user, if any). Used by helpers that background jobs share. */
+type Scope = AuditScope;
 
 const errorText = (error: unknown) => redactString(error instanceof Error ? error.message : "Unknown error").slice(0, 500);
 
@@ -87,7 +90,7 @@ export async function listCampaigns(ctx: TenantContext): Promise<CampaignSummary
   });
 }
 
-async function loadCampaignRow(supabase: UserClient, ctx: TenantContext, campaignId: string) {
+async function loadCampaignRow(supabase: UserClient | AdminClient, ctx: Scope, campaignId: string) {
   const { data, error } = await supabase
     .from("campaigns")
     .select("id, name, status, mailbox_id, provider_connection_id, external_id, approved_by, approved_at, last_error, updated_at")
@@ -356,7 +359,7 @@ export async function moveStepUp(ctx: TenantContext, campaignId: string, stepId:
  * state machine and the compliance gate.
  */
 async function transition(
-  ctx: TenantContext,
+  ctx: Scope,
   campaignId: string,
   from: CampaignStatus,
   to: CampaignStatus,
@@ -395,7 +398,7 @@ export async function returnToDraft(ctx: TenantContext, campaignId: string) {
   await audit(ctx, "campaign.returned_to_draft", { campaignId });
 }
 
-async function adaptersFor(ctx: TenantContext, connectionId: string): Promise<ProviderAdapters> {
+async function adaptersFor(ctx: Scope, connectionId: string): Promise<ProviderAdapters> {
   const adapters = await getProviderRegistry().forTenant(ctx);
   // The campaign must run on the tenant's current connection.
   if (adapters.connectionId !== connectionId) throw new CampaignStateError("This campaign's provider connection is no longer active.");
@@ -442,7 +445,7 @@ export async function completeCampaign(ctx: TenantContext, campaignId: string) {
 // Enrollment
 // ---------------------------------------------------------------------------
 
-async function loadSuppressionSet(ctx: TenantContext) {
+async function loadSuppressionSet(ctx: Scope) {
   const { data, error } = await createAdminClient().from("suppression_entries").select("scope, value_hash").eq("tenant_id", ctx.tenantId);
   if (error) throw new Error("Failed to load suppressions");
   return {
@@ -452,7 +455,7 @@ async function loadSuppressionSet(ctx: TenantContext) {
 }
 
 /** After an opt-out sync, flag enrolled contacts who are now suppressed (shown in the UI). */
-async function markNewlySuppressed(ctx: TenantContext, campaignId: string) {
+async function markNewlySuppressed(ctx: Scope, campaignId: string) {
   const db = createAdminClient();
   const { data, error } = await db
     .from("campaign_contacts")
@@ -620,7 +623,7 @@ async function doEnroll(ctx: TenantContext, campaignId: string, contactIds: stri
 }
 
 async function sendToProvider(
-  ctx: TenantContext,
+  ctx: Scope,
   campaignId: string,
   sequenceId: string,
   mailboxExternalId: string,
@@ -663,20 +666,35 @@ async function sendToProvider(
  */
 export async function retryPendingEnrollments(ctx: TenantContext, campaignId: string) {
   assertCan(ctx.role, "campaign.enroll");
-  const supabase = await createUserClient();
+  return reconcileEnrollments(ctx, campaignId, { recoverFailedCampaign: true });
+}
+
+/**
+ * Core of reconciliation, shared with the background job (userId null).
+ * `staleBefore` skips rows touched recently, so a job never races an
+ * enrollment that is still in progress. Only a person (recoverFailedCampaign)
+ * may move a failed campaign back to active.
+ */
+export async function reconcileEnrollments(
+  ctx: Scope,
+  campaignId: string,
+  options: { recoverFailedCampaign: boolean; staleBefore?: Date },
+) {
   const db = createAdminClient();
-  const campaign = await loadCampaignRow(supabase, ctx, campaignId);
+  const campaign = await loadCampaignRow(db, ctx, campaignId);
   if (!campaign.external_id) throw new CampaignStateError("Nothing to retry yet.");
   const adapters = await adaptersFor(ctx, campaign.provider_connection_id);
   await syncOptOuts(ctx.tenantId, adapters);
   await markNewlySuppressed(ctx, campaignId);
 
-  const { data, error } = await db
+  let query = db
     .from("campaign_contacts")
     .select("contact_id, contact:contacts!campaign_contacts_tenant_id_contact_id_fkey(email, external_ref)")
     .eq("tenant_id", ctx.tenantId)
     .eq("campaign_id", campaignId)
     .eq("enrollment_status", "enrolling");
+  if (options.staleBefore) query = query.lt("updated_at", options.staleBefore.toISOString());
+  const { data, error } = await query;
   if (error) throw new Error("Failed to load pending enrollments");
   const pending: EnrollmentCandidate[] = data.map((row) => {
     const contact = Array.isArray(row.contact) ? row.contact[0] : row.contact;
@@ -684,15 +702,17 @@ export async function retryPendingEnrollments(ctx: TenantContext, campaignId: st
   });
   let result = { enrolled: 0, failed: 0 };
   if (pending.length) {
-    const { data: mailbox } = await supabase.from("mailboxes").select("external_id").eq("tenant_id", ctx.tenantId).eq("id", campaign.mailbox_id ?? "").maybeSingle();
+    const { data: mailbox } = await db.from("mailboxes").select("external_id").eq("tenant_id", ctx.tenantId).eq("id", campaign.mailbox_id ?? "").maybeSingle();
     result = await sendToProvider(ctx, campaignId, campaign.external_id, mailbox?.external_id ?? "", pending);
   }
   // A campaign that failed (e.g. at activation) recovers once nothing is left pending.
-  if (campaign.status === "failed") {
+  if (options.recoverFailedCampaign && campaign.status === "failed") {
     await transition(ctx, campaignId, "failed", "enrolling", { last_error: null });
     await adapters.outreach.activateSequence(campaign.external_id);
     await transition(ctx, campaignId, "enrolling", "active");
   }
-  await audit(ctx, "campaign.enrollment_retried", { campaignId, ...result });
+  if (pending.length || options.recoverFailedCampaign) {
+    await audit(ctx, "campaign.enrollment_retried", { campaignId, ...result, automatic: ctx.userId === null });
+  }
   return result;
 }

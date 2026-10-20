@@ -17,6 +17,7 @@ export interface IntegrationView {
   lastError: string | null;
   mailboxes: { email: string; status: string; dailyLimit: number }[];
   syncs: { kind: string; status: string; lastSuccessAt: string | null; lastError: string | null }[];
+  jobs: { id: string; type: string; status: string; attempts: number; lastError: string | null; updatedAt: string }[];
 }
 
 /** Connection status for the integrations page. Never selects credential_ref. */
@@ -35,15 +36,21 @@ export async function loadApolloIntegration(ctx: TenantContext): Promise<Integra
   if (!active) {
     return {
       provider: "apollo", status: "disconnected", mode: "mock", accountHolder: null, billingParty: null, planTier: null,
-      authorizationConfirmedAt: null, lastVerifiedAt: null, lastError: null, mailboxes: [], syncs: [],
+      authorizationConfirmedAt: null, lastVerifiedAt: null, lastError: null, mailboxes: [], syncs: [], jobs: [],
     };
   }
 
-  const [mailboxes, syncs] = await Promise.all([
+  const [mailboxes, syncs, jobs] = await Promise.all([
     supabase.from("mailboxes").select("email, status, daily_limit").eq("tenant_id", ctx.tenantId).eq("provider_connection_id", active.id),
     supabase.from("sync_jobs").select("kind, status, last_success_at, last_error").eq("tenant_id", ctx.tenantId).eq("provider_connection_id", active.id),
+    supabase
+      .from("jobs")
+      .select("id, type, status, attempts, last_error, updated_at")
+      .eq("tenant_id", ctx.tenantId)
+      .order("updated_at", { ascending: false })
+      .limit(10),
   ]);
-  if (mailboxes.error || syncs.error) throw new Error("Failed to load integration details");
+  if (mailboxes.error || syncs.error || jobs.error) throw new Error("Failed to load integration details");
 
   return {
     provider: "apollo",
@@ -57,5 +64,6 @@ export async function loadApolloIntegration(ctx: TenantContext): Promise<Integra
     lastError: active.last_error,
     mailboxes: (mailboxes.data ?? []).map((m) => ({ email: m.email, status: m.status, dailyLimit: m.daily_limit })),
     syncs: (syncs.data ?? []).map((s) => ({ kind: s.kind, status: s.status, lastSuccessAt: s.last_success_at, lastError: s.last_error })),
+    jobs: (jobs.data ?? []).map((j) => ({ id: j.id, type: j.type, status: j.status, attempts: j.attempts, lastError: j.last_error, updatedAt: j.updated_at })),
   };
 }

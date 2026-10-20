@@ -22,8 +22,10 @@
   - [x] E2E prospects (search, save with enrichment, dedupe, role gating, trigger filter)
   - [x] E2E pipeline (stage moves, lost reason, rep ownership, table and filters, create, notes, tasks, contact/company mismatch, cross-tenant id)
   - [x] Enrollment plan, state machine, and idempotency unit tests
+  - [x] Job runner unit tests (retries, dead letters, tenant scoping, time budget) and DB tests (dedupe, SKIP LOCKED, stale locks, server-only)
+  - [x] E2E jobs (cron auth, scheduled run, Sync now, activity reaches the overview)
   - [x] E2E campaigns (compliance gate, create to enroll, suppressed skips, back to draft, pause and resume, rep gating, cross-tenant id)
-- [ ] 8. Postgres job runner: simulated activity sync, opt-out sync into suppression, reconciliation; failures visible on Integrations
+- [x] 8. Postgres job runner: scheduled opt-out sync, email activity sync (bounces suppressed), enrollment reconciliation, retries with backoff, failures and "Sync now" on Integrations
 - [x] 9. Environment variables, setup, tests, deployment (README)
 
 ## Phase B: live Apollo (blocked)

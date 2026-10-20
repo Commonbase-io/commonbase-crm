@@ -27,6 +27,7 @@ const PERMISSIONS = {
   "integrations.view": ["tenant_admin", "sales_manager"],
   "integrations.manage": ["tenant_admin"],
   "jobs.view": ["tenant_admin", "sales_manager"],
+  "jobs.run": ["tenant_admin", "sales_manager"],
   "audit.view": ["tenant_admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
