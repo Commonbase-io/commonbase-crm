@@ -12,7 +12,7 @@
   - [x] Settings: general, team (read-only), integrations (status, holder, billing, authorization, mailboxes, sync)
   - [x] Prospects: search via registry, trigger-event ranking, review, dedupe, save, optional enrichment, suppression and customer exclusion
   - [ ] Campaigns: list, draft editor, steps, mailbox, approval, enrollment with idempotency, pause
-  - [ ] Pipeline: kanban and table, lost_reason dialog, notes, tasks
+  - [x] Pipeline: board and table views, owner filter, stage moves with required lost reason, create, reassign, detail page with notes, tasks, and contact activity
   - [ ] Team management actions (invite, change role, remove), audit logged
 - [~] 7. Tests
   - [x] RLS cross-tenant reads and writes, role rules, credential column, composite FKs
@@ -20,6 +20,7 @@
   - [x] DB-level suppression and campaign safety
   - [x] E2E smoke (login, tenant 404, role gating, integrations, staff chooser)
   - [x] E2E prospects (search, save with enrichment, dedupe, role gating, trigger filter)
+  - [x] E2E pipeline (stage moves, lost reason, rep ownership, table and filters, create, notes, tasks, contact/company mismatch, cross-tenant id)
   - [ ] Service-level enrollment idempotency and retry tests
 - [ ] 8. Postgres job runner: simulated activity sync, opt-out sync into suppression, reconciliation; failures visible on Integrations
 - [x] 9. Environment variables, setup, tests, deployment (README)
