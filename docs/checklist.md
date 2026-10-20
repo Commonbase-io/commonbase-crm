@@ -10,7 +10,7 @@
 - [~] 6. Pages on the mock provider
   - [x] Overview (KPIs, quote-to-win, median days to quote, funnel, date and campaign filters, Demo data label)
   - [x] Settings: general, team (read-only), integrations (status, holder, billing, authorization, mailboxes, sync)
-  - [ ] Prospects: search via registry, review, dedupe, save, enrich, suppression and customer exclusion
+  - [x] Prospects: search via registry, trigger-event ranking, review, dedupe, save, optional enrichment, suppression and customer exclusion
   - [ ] Campaigns: list, draft editor, steps, mailbox, approval, enrollment with idempotency, pause
   - [ ] Pipeline: kanban and table, lost_reason dialog, notes, tasks
   - [ ] Team management actions (invite, change role, remove), audit logged
@@ -19,6 +19,7 @@
   - [x] Credential isolation in the provider registry
   - [x] DB-level suppression and campaign safety
   - [x] E2E smoke (login, tenant 404, role gating, integrations, staff chooser)
+  - [x] E2E prospects (search, save with enrichment, dedupe, role gating, trigger filter)
   - [ ] Service-level enrollment idempotency and retry tests
 - [ ] 8. Postgres job runner: simulated activity sync, opt-out sync into suppression, reconciliation; failures visible on Integrations
 - [x] 9. Environment variables, setup, tests, deployment (README)
