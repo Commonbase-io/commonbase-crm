@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth/current";
 import { listCompanies } from "@/lib/crm/companies";
 import { listContacts } from "@/lib/crm/contacts";
 import { listActiveOwners } from "@/lib/crm/users";
+import { EmptyState } from "@/components/empty-state";
 import { Filters, Pager } from "@/components/list";
 import { parseListQuery } from "@/lib/validation";
 
@@ -13,6 +14,7 @@ export default async function ContactsPage({
 }) {
   const session = await requireSession();
   const query = parseListQuery(await searchParams);
+  const filtered = Boolean(query.q || query.ownerId || query.companyId);
   const [result, owners, companies] = await Promise.all([
     listContacts(session, query),
     listActiveOwners(session),
@@ -27,6 +29,13 @@ export default async function ContactsPage({
         </Link>
       </div>
       <Filters action="/contacts" query={query} owners={owners} companies={companies.items} />
+      {result.items.length === 0 && !filtered ? (
+        <EmptyState
+          title="No contacts yet"
+          body="Every contact belongs to a company. Create the company first, or do both in the contact wizard."
+          action={{ href: "/contacts/new", label: "New contact" }}
+        />
+      ) : (
       <div className="table-wrap">
         <table>
           <thead>
@@ -51,13 +60,14 @@ export default async function ContactsPage({
                   </Link>
                 </td>
                 <td>{contact.email}</td>
-                <td>{contact.company?.name}</td>
+                <td>{contact.company.name}</td>
                 <td>{contact.owner.name}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      )}
       <Pager path="/contacts" query={query} total={result.total} />
     </section>
   );

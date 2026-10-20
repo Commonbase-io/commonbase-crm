@@ -62,8 +62,8 @@ export function ContactForm({
         <input id="title" name="title" defaultValue={initial?.title ?? ""} />
       </Field>
       <Field label="Company" name="companyId" error={fieldErrors.companyId}>
-        <select id="companyId" name="companyId" defaultValue={initial?.companyId ?? ""}>
-          <option value="">No company</option>
+        <select id="companyId" name="companyId" defaultValue={initial?.companyId ?? ""} required>
+          <option value="">Choose a company</option>
           {companies.map((company) => (
             <option key={company.id} value={company.id}>
               {company.name}

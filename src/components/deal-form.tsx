@@ -1,12 +1,14 @@
 "use client";
 
+import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api-client";
 import { centsToDollars } from "@/lib/money";
 import { Field, FormError, useSubmit } from "@/components/form-state";
 
 type Option = { id: string; name: string };
-type ContactOption = { id: string; name: string };
+type ContactOption = { id: string; name: string; companyId: string };
 type Initial = {
   id?: string;
   name?: string;
@@ -34,6 +36,10 @@ export function DealForm({
 }) {
   const router = useRouter();
   const { fieldErrors, formError, pending, ready, submit } = useSubmit();
+  const [companyId, setCompanyId] = useState(initial?.companyId ?? "");
+  const [selected, setSelected] = useState<string[]>(initial?.contactIds ?? []);
+  const visible = useMemo(() => contacts.filter((contact) => contact.companyId === companyId), [contacts, companyId]);
+
   return (
     <form
       className="form two"
@@ -45,10 +51,10 @@ export function DealForm({
           amount: form.get("amount"),
           currency: form.get("currency"),
           stageId: form.get("stageId") || undefined,
-          companyId: form.get("companyId"),
+          companyId,
           ownerId: form.get("ownerId"),
           expectedCloseDate: form.get("expectedCloseDate"),
-          contactIds: form.getAll("contactIds"),
+          contactIds: selected,
         };
         void submit(async () => {
           if (initial?.id) {
@@ -94,8 +100,16 @@ export function DealForm({
         </Field>
       ) : null}
       <Field label="Company" name="companyId" error={fieldErrors.companyId}>
-        <select id="companyId" name="companyId" defaultValue={initial?.companyId ?? ""}>
-          <option value="">No company</option>
+        <select
+          id="companyId"
+          value={companyId}
+          required
+          onChange={(event) => {
+            setCompanyId(event.target.value);
+            setSelected([]);
+          }}
+        >
+          <option value="">Choose a company</option>
           {companies.map((company) => (
             <option key={company.id} value={company.id}>
               {company.name}
@@ -116,14 +130,31 @@ export function DealForm({
         <input id="expectedCloseDate" name="expectedCloseDate" type="date" defaultValue={initial?.expectedCloseDate ?? ""} />
       </Field>
       <div className="field wide">
-        <span>Contacts</span>
-        <div className="check-list">
-          {contacts.map((contact) => (
-            <label key={contact.id}>
-              <input type="checkbox" name="contactIds" value={contact.id} defaultChecked={initial?.contactIds?.includes(contact.id)} /> {contact.name}
-            </label>
-          ))}
-        </div>
+        <span>Contacts at this company</span>
+        {companyId && visible.length === 0 ? (
+          <p className="muted">
+            No contacts yet. <Link href={`/contacts/new?companyId=${companyId}`}>Add one</Link> before saving this deal.
+          </p>
+        ) : (
+          <div className="choice-list">
+            {visible.map((contact) => (
+              <label className="choice" key={contact.id}>
+                <input
+                  type="checkbox"
+                  name="contactIds"
+                  value={contact.id}
+                  checked={selected.includes(contact.id)}
+                  onChange={(event) => {
+                    setSelected((current) =>
+                      event.target.checked ? [...current, contact.id] : current.filter((id) => id !== contact.id),
+                    );
+                  }}
+                />
+                <span>{contact.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
         {fieldErrors.contactIds ? <em className="field-error">{fieldErrors.contactIds}</em> : null}
       </div>
       <div className="wide">

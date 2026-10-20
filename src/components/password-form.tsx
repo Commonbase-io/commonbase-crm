@@ -15,7 +15,7 @@ export function PasswordForm() {
         const data = Object.fromEntries(new FormData(event.currentTarget).entries());
         void submit(async () => {
           await api("/api/auth/change-password", { method: "POST", body: data });
-          router.push("/companies");
+          router.push("/dashboard");
           router.refresh();
         });
       }}

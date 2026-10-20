@@ -4,6 +4,7 @@ import { listCompanies } from "@/lib/crm/companies";
 import { listDeals } from "@/lib/crm/deals";
 import { getPipeline } from "@/lib/crm/pipelines";
 import { listActiveOwners } from "@/lib/crm/users";
+import { EmptyState } from "@/components/empty-state";
 import { Filters, Pager } from "@/components/list";
 import { formatMoney } from "@/lib/money";
 import { parseListQuery } from "@/lib/validation";
@@ -16,6 +17,7 @@ export default async function DealsPage({
   const session = await requireSession();
   const query = parseListQuery(await searchParams);
   const empty = { q: "", ownerId: "", stageId: "", companyId: "", page: 1, pageSize: 100 };
+  const filtered = Boolean(query.q || query.ownerId || query.stageId || query.companyId);
   const [result, owners, companies, pipeline] = await Promise.all([
     listDeals(session, query),
     listActiveOwners(session),
@@ -31,6 +33,13 @@ export default async function DealsPage({
         </Link>
       </div>
       <Filters action="/deals" query={query} owners={owners} companies={companies.items} stages={pipeline.stages} />
+      {result.items.length === 0 && !filtered ? (
+        <EmptyState
+          title="No deals yet"
+          body="A deal needs a company and a contact at that company. The wizard collects all three before anything is saved."
+          action={{ href: "/deals/new", label: "New deal" }}
+        />
+      ) : (
       <div className="table-wrap">
         <table>
           <thead>
@@ -55,13 +64,14 @@ export default async function DealsPage({
                 </td>
                 <td>{formatMoney(deal.amountCents, deal.currency)}</td>
                 <td>{deal.stage.name}</td>
-                <td>{deal.company?.name}</td>
+                <td>{deal.company.name}</td>
                 <td>{deal.owner.name}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      )}
       <Pager path="/deals" query={query} total={result.total} />
     </section>
   );

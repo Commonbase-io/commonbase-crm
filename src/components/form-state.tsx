@@ -17,7 +17,7 @@ export function useSubmit() {
   const [pending, setPending] = useState(false);
   const ready = useHydrated();
 
-  async function submit(fn: () => Promise<void>) {
+  async function submit(fn: () => Promise<void>, onError?: (error: ApiError) => void) {
     setPending(true);
     setFieldErrors({});
     setFormError(null);
@@ -28,6 +28,7 @@ export function useSubmit() {
         const fields = error.fieldErrors ?? {};
         setFieldErrors(fields);
         setFormError(Object.keys(fields).length === 0 ? error.message : null);
+        onError?.(error);
       } else {
         setFormError("Something went wrong");
       }

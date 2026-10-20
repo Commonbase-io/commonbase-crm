@@ -102,7 +102,7 @@ export function PipelineBoard({ stages, deals }: { stages: BoardStage[]; deals: 
                     <strong>{deal.name}</strong>
                   </Link>
                   <span>{formatMoney(deal.amountCents, deal.currency)}</span>
-                  <span>{deal.companyName ?? "No company"}</span>
+                  <span>{deal.companyName}</span>
                 </article>
               ))}
           </section>

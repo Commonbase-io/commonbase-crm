@@ -15,7 +15,7 @@ export function LoginForm() {
         const data = Object.fromEntries(new FormData(event.currentTarget).entries());
         void submit(async () => {
           const result = await api<{ mustChangePassword: boolean }>("/api/auth/login", { method: "POST", body: data });
-          router.push(result.mustChangePassword ? "/change-password" : "/companies");
+          router.push(result.mustChangePassword ? "/change-password" : "/dashboard");
           router.refresh();
         });
       }}

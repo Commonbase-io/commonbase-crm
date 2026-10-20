@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireSession } from "@/lib/auth/current";
 import { listCompanies } from "@/lib/crm/companies";
 import { listActiveOwners } from "@/lib/crm/users";
+import { EmptyState } from "@/components/empty-state";
 import { Filters, Pager } from "@/components/list";
 import { parseListQuery } from "@/lib/validation";
 
@@ -13,6 +14,7 @@ export default async function CompaniesPage({
   const session = await requireSession();
   const query = parseListQuery(await searchParams);
   const [result, owners] = await Promise.all([listCompanies(session, query), listActiveOwners(session)]);
+  const filtered = Boolean(query.q || query.ownerId);
   return (
     <section data-testid="companies-list">
       <div className="page-head">
@@ -22,6 +24,13 @@ export default async function CompaniesPage({
         </Link>
       </div>
       <Filters action="/companies" query={query} owners={owners} />
+      {result.items.length === 0 && !filtered ? (
+        <EmptyState
+          title="No companies yet"
+          body="Companies are the top of the CRM. Add one before you add the people who work there."
+          action={{ href: "/companies/new", label: "New company" }}
+        />
+      ) : (
       <div className="table-wrap">
         <table>
           <thead>
@@ -51,6 +60,7 @@ export default async function CompaniesPage({
           </tbody>
         </table>
       </div>
+      )}
       <Pager path="/companies" query={query} total={result.total} />
     </section>
   );

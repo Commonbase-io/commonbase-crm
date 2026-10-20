@@ -1,27 +1,34 @@
 import Link from "next/link";
 import { LogoutButton } from "@/components/logout-button";
+import { SideNav } from "@/components/side-nav";
 import type { SessionUser } from "@/lib/auth/session";
 
 export function Shell({ session, children }: { session: SessionUser; children: React.ReactNode }) {
   const admin = session.role === "ADMIN";
   const platform = session.isPlatformAdmin && session.orgIsPlatform;
+  const items = [
+    { href: "/dashboard", label: "Dashboard" },
+    { href: "/companies", label: "Companies" },
+    { href: "/contacts", label: "Contacts" },
+    { href: "/deals", label: "Deals" },
+    { href: "/pipeline", label: "Pipeline" },
+    { href: "/import", label: "Import" },
+  ];
+  if (admin) items.push({ href: "/settings/users", label: "Settings" });
+  if (platform) items.push({ href: "/platform", label: "Platform" });
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand">
-          Commonbase
-          <span>CRM</span>
-        </div>
-        <nav className="nav">
-          <Link href="/companies">Companies</Link>
-          <Link href="/contacts">Contacts</Link>
-          <Link href="/deals">Deals</Link>
-          <Link href="/pipeline">Pipeline</Link>
-          <Link href="/import">Import</Link>
-          {admin ? <Link href="/settings/users">Users</Link> : null}
-          {admin ? <Link href="/settings/pipeline">Stages</Link> : null}
-          {platform ? <Link href="/platform">Platform</Link> : null}
-        </nav>
+        <Link className="brand" href="/dashboard">
+          <span className="brand-mark" aria-hidden="true">
+            CB
+          </span>
+          <span>
+            <strong>Commonbase</strong>
+            <small>CRM</small>
+          </span>
+        </Link>
+        <SideNav items={items} />
         <div className="who">
           <strong>{session.name}</strong>
           <span>{session.orgName}</span>

@@ -1,20 +1,26 @@
 import { requireSession } from "@/lib/auth/current";
 import { listCompanies } from "@/lib/crm/companies";
-import { listActiveOwners } from "@/lib/crm/users";
-import { ContactForm } from "@/components/contact-form";
+import { ContactWizard } from "@/components/contact-wizard";
 
-export default async function NewContactPage() {
+export default async function NewContactPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await requireSession();
-  const [owners, companies] = await Promise.all([
-    listActiveOwners(session),
-    listCompanies(session, { q: "", ownerId: "", stageId: "", companyId: "", page: 1, pageSize: 100 }),
-  ]);
+  const params = await searchParams;
+  const requested = typeof params.companyId === "string" ? params.companyId : "";
+  const companies = await listCompanies(session, { q: "", ownerId: "", stageId: "", companyId: "", page: 1, pageSize: 100 });
+  const initialCompanyId = companies.items.some((company) => company.id === requested) ? requested : undefined;
   return (
     <section>
       <div className="page-head">
-        <h1>New contact</h1>
+        <div>
+          <h1>New contact</h1>
+          <p className="lede">A contact always belongs to a company. Pick one, or create it here.</p>
+        </div>
       </div>
-      <ContactForm owners={owners} companies={companies.items} initial={{ ownerId: session.id }} />
+      <ContactWizard companies={companies.items} initialCompanyId={initialCompanyId} />
     </section>
   );
 }

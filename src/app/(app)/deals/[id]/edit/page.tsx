@@ -25,7 +25,11 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
         <DealForm
           owners={owners}
           companies={companies.items}
-          contacts={contacts.items.map((contact) => ({ id: contact.id, name: `${contact.firstName} ${contact.lastName}` }))}
+          contacts={contacts.items.map((contact) => ({
+            id: contact.id,
+            name: `${contact.firstName} ${contact.lastName}`,
+            companyId: contact.companyId,
+          }))}
           initial={{
             id: deal.id,
             name: deal.name,
