@@ -1,5 +1,6 @@
 import { neutralizeCsvCell, parseCsv } from "@/lib/csv";
 import { writeAudit } from "@/lib/crm/audit";
+import { writeBarrier } from "@/lib/crm/write-barrier";
 import type { ImportRow } from "@/lib/import-shared";
 import type { SessionUser } from "@/lib/auth/session";
 import { withOrg, type Tx } from "@/lib/db";
@@ -213,6 +214,7 @@ export async function importContacts(session: SessionUser, input: ImportInput) {
         rows.push({ ...row, status: "invalid", errors: ["Company is required"] });
         continue;
       }
+      await writeBarrier("contact-import");
       const contactId = await insertContact(tx, {
         orgId: session.orgId,
         firstName: row.values.firstName,

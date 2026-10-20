@@ -2,6 +2,7 @@ import { outcomeToStatus, type BoardDeal, type BoardStage } from "@/lib/crm/boar
 import { writeAudit } from "@/lib/crm/audit";
 import { createCompanyTx } from "@/lib/crm/companies";
 import { createContactTx } from "@/lib/crm/contacts";
+import { lockContact, lockContacts } from "@/lib/crm/locks";
 import type { SessionUser } from "@/lib/auth/session";
 import { errorText, isPrismaNotFound, isUniqueViolation, withOrg, type Tx } from "@/lib/db";
 import { ConflictError, HttpError, NotFoundError } from "@/lib/errors";
@@ -65,6 +66,7 @@ async function loadDealContacts(tx: Tx, companyId: string, contactIds: string[])
       contactIds: "Choose at least one contact at this company",
     });
   }
+  await lockContacts(tx, unique);
   const found = await tx.contact.findMany({
     where: { id: { in: unique } },
     select: { id: true, companyId: true, archivedAt: true },
@@ -212,6 +214,7 @@ async function getDealInTx(tx: Tx, id: string) {
 }
 
 async function requireWizardContact(tx: Tx, contactId: string, companyId: string) {
+  await lockContact(tx, contactId);
   const contact = await tx.contact.findFirst({
     where: { id: contactId, archivedAt: null },
     select: { id: true, companyId: true },

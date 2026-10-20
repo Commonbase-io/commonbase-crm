@@ -96,6 +96,40 @@ export function withApi<TBody = undefined, TQuery = undefined>(
           400,
         );
       }
+      if (text.includes("contact_sole_on_deal")) {
+        return json(
+          {
+            error: "This contact is the only person on a deal",
+            fieldErrors: {
+              contactId:
+                "This contact is the only person on a deal. Add another contact from the same company or archive the deal first.",
+            },
+          },
+          400,
+        );
+      }
+      if (text.includes("deal_contact_archived")) {
+        return json(
+          {
+            error: "Choose active contacts at this company",
+            fieldErrors: {
+              contactId: "Choose active contacts at this company",
+              contactIds: "Choose active contacts at this company",
+            },
+          },
+          400,
+        );
+      }
+      if (text.includes("company_has_active_records")) {
+        return json(
+          {
+            error: "Archive this company's contacts and deals first",
+            fieldErrors: { companyId: "Archive this company's contacts and deals first." },
+          },
+          400,
+        );
+      }
+      if (text.includes("company_archived")) return notFound();
       console.error(internalErrorSummary(error));
       return json({ error: "Internal error" }, 500);
     }

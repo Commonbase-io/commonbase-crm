@@ -1,4 +1,5 @@
 import { writeAudit } from "@/lib/crm/audit";
+import { writeBarrier } from "@/lib/crm/write-barrier";
 import type { SessionUser } from "@/lib/auth/session";
 import { isPrismaNotFound, isUniqueViolation, withOrg, type Tx } from "@/lib/db";
 import { HttpError, NotFoundError } from "@/lib/errors";
@@ -222,6 +223,7 @@ export async function archiveCompany(session: SessionUser, id: string) {
         companyId: "Archive this company's contacts and deals first.",
       });
     }
+    await writeBarrier("company-archive");
     try {
       await tx.company.update({ where: { id }, data: { archivedAt: new Date() } });
     } catch (error) {

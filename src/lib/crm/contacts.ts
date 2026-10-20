@@ -1,5 +1,7 @@
 import { writeAudit } from "@/lib/crm/audit";
 import { createCompanyTx } from "@/lib/crm/companies";
+import { lockCompany, lockContact } from "@/lib/crm/locks";
+import { writeBarrier } from "@/lib/crm/write-barrier";
 import type { SessionUser } from "@/lib/auth/session";
 import { errorText, isPrismaNotFound, isUniqueViolation, withOrg, type Tx } from "@/lib/db";
 import { HttpError, NotFoundError } from "@/lib/errors";
@@ -160,6 +162,7 @@ export async function createContact(session: SessionUser, input: ContactCreateIn
 export async function createContactTx(tx: Tx, session: SessionUser, input: ContactInput) {
   const ownerId = await resolveOwner(tx, session, input.ownerId);
   const companyId = await requireCompany(tx, input.companyId);
+  await writeBarrier("contact-create");
   await assertEmailAvailable(tx, input.email);
   const contact = await tx.contact.create({
     data: {
@@ -201,6 +204,11 @@ export async function updateContact(session: SessionUser, id: string, input: Con
 
 async function updateContactInOrg(session: SessionUser, id: string, input: ContactInput) {
   return withOrg(session.orgId, session.id, async (tx) => {
+    // Hold these rows across the link check and the company change. Company
+    // first, then contact, so this cannot deadlock with a deal write that
+    // locks contacts in id order.
+    await lockCompany(tx, input.companyId);
+    await lockContact(tx, id);
     const current = await tx.contact.findFirst({
       where: { id, archivedAt: null },
       select: { id: true, companyId: true },
@@ -214,6 +222,7 @@ async function updateContactInOrg(session: SessionUser, id: string, input: Conta
         });
       }
     }
+    await writeBarrier("contact-reassign");
     const ownerId = await resolveOwner(tx, session, input.ownerId);
     const companyId = await requireCompany(tx, input.companyId);
     await assertEmailAvailable(tx, input.email, id);
@@ -262,6 +271,7 @@ export async function archiveContact(session: SessionUser, id: string) {
         contactId: `This contact is the only person on ${names}. Add another contact from the same company or archive the deal first.`,
       });
     }
+    await writeBarrier("contact-archive");
     await tx.contact.update({ where: { id }, data: { archivedAt: new Date() } });
     await writeAudit(tx, {
       orgId: session.orgId,
