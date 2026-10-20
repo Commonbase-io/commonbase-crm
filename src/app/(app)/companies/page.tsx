@@ -31,7 +31,7 @@ export default async function CompaniesPage({
           action={{ href: "/companies/new", label: "New company" }}
         />
       ) : (
-      <div className="table-wrap">
+      <div className="surface-card overflow-hidden">
         <table>
           <thead>
             <tr>

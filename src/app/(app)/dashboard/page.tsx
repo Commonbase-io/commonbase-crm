@@ -39,9 +39,9 @@ export default async function DashboardPage() {
           action={{ href: "/deals/new", label: "New deal" }}
         />
       ) : (
-        <div className="card">
-          <h2>Recent deals</h2>
-          <div className="table-wrap">
+        <div className="surface-card overflow-hidden p-6">
+          <h2 className="mb-3 text-base font-semibold">Recent deals</h2>
+          <div className="overflow-x-auto">
             <table>
               <thead>
                 <tr>

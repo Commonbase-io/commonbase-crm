@@ -40,7 +40,7 @@ export default async function DealsPage({
           action={{ href: "/deals/new", label: "New deal" }}
         />
       ) : (
-      <div className="table-wrap">
+      <div className="surface-card overflow-hidden">
         <table>
           <thead>
             <tr>

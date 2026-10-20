@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Ticket } from "lucide-react";
 import { getSession } from "@/lib/auth/current";
 import { LoginForm } from "@/components/login-form";
 
@@ -7,62 +8,20 @@ export default async function LoginPage() {
   if (session?.mustChangePassword) redirect("/change-password");
   if (session) redirect("/dashboard");
   return (
-    <main className="login-screen">
-      <div className="login-aside">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            CB
+    <main className="grid min-h-dvh place-items-center bg-background px-4 py-10">
+      <div className="surface-card w-full max-w-md p-8">
+        <div className="mb-6 flex items-center gap-2.5">
+          <span className="grid size-9 place-items-center rounded-lg bg-primary text-white">
+            <Ticket className="size-5" />
           </span>
-          <span>
-            <strong>Commonbase</strong>
-            <small>CRM</small>
+          <span className="leading-tight">
+            <span className="block font-semibold tracking-tight">Commonbase</span>
+            <span className="block text-xs text-muted-foreground">CRM</span>
           </span>
         </div>
-        <div>
-          <h2>From the first conversation to a closed deal.</h2>
-          <p>Keep companies, the people who work there, and the deals you are working in one place.</p>
-          <ul>
-            <li>
-              <span className="tick" aria-hidden="true">
-                1
-              </span>
-              Companies come first
-            </li>
-            <li>
-              <span className="tick" aria-hidden="true">
-                2
-              </span>
-              Contacts belong to a company
-            </li>
-            <li>
-              <span className="tick" aria-hidden="true">
-                3
-              </span>
-              Deals need both before they can be saved
-            </li>
-          </ul>
-        </div>
-        <p>© {new Date().getFullYear()} Commonbase</p>
-      </div>
-      <div className="login-panel">
-        <div className="login-card">
-          <div className="login-brand">
-            <span className="brand-mark" aria-hidden="true">
-              CB
-            </span>
-            <span>
-              <strong>Commonbase</strong>
-              <small>CRM</small>
-            </span>
-          </div>
-          <div className="page-head">
-            <div>
-              <h1>Sign in</h1>
-              <p>Use the email and password your admin set up for you.</p>
-            </div>
-          </div>
-          <LoginForm />
-        </div>
+        <h1 className="page-heading">Sign in</h1>
+        <p className="mb-6 mt-1 text-sm text-muted-foreground">Use the email and password your admin set up for you.</p>
+        <LoginForm />
       </div>
     </main>
   );

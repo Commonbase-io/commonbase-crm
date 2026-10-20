@@ -8,7 +8,7 @@ test("signs in and creates a company, contact, and deal", async ({ page }) => {
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
-  const nav = page.locator(".nav");
+  const nav = page.locator("aside nav");
   await nav.getByRole("link", { name: "Companies" }).click();
   await page.getByRole("link", { name: "New company" }).click();
   await page.getByLabel("Name").fill(`Playwright Co ${stamp}`);
@@ -18,8 +18,7 @@ test("signs in and creates a company, contact, and deal", async ({ page }) => {
 
   await nav.getByRole("link", { name: "Contacts" }).click();
   await page.getByRole("link", { name: "New contact" }).click();
-  await page.getByRole("radio", { name: `Playwright Co ${stamp}` }).check();
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: `Playwright Co ${stamp}` }).click();
   await page.getByLabel("First name").fill("Pat");
   await page.getByLabel("Last name").fill(`Playwright${stamp}`);
   await page.getByLabel("Email").fill(`pat-${stamp}@playwright.test`);
@@ -28,10 +27,8 @@ test("signs in and creates a company, contact, and deal", async ({ page }) => {
 
   await nav.getByRole("link", { name: "Deals" }).click();
   await page.getByRole("link", { name: "New deal" }).click();
-  await page.getByRole("radio", { name: `Playwright Co ${stamp}` }).check();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("radio", { name: `Pat Playwright${stamp}` }).check();
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: `Playwright Co ${stamp}` }).click();
+  await page.getByRole("button", { name: `Pat Playwright${stamp}` }).click();
   await page.getByLabel("Name").fill(`Playwright Deal ${stamp}`);
   await page.getByLabel("Amount").fill("1200.50");
   await page.getByRole("button", { name: "Save deal" }).click();

@@ -1,14 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import * as React from "react";
 import { useRouter } from "next/navigation";
+import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { ApiError, api } from "@/lib/api-client";
+import { CreateDialog } from "@/components/create-dialog";
 import { Field, FormError, useSubmit } from "@/components/form-state";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 
 type Option = { id: string; name: string };
 type ContactOption = { id: string; name: string; companyId: string };
+type Step = "company" | "contact" | "details";
 
-const STEPS = ["Company", "Contact", "Deal"];
+type CompanyChoice =
+  | { mode: "existing"; id: string; name: string }
+  | { mode: "create"; name: string; domain: string; phone: string; city: string };
+type ContactChoice =
+  | { mode: "existing"; id: string; name: string }
+  | { mode: "create"; firstName: string; lastName: string; email: string; title: string };
 
 export function DealWizard({
   owners,
@@ -27,271 +38,303 @@ export function DealWizard({
 }) {
   const router = useRouter();
   const { fieldErrors, formError, pending, ready, submit } = useSubmit();
-  const [step, setStep] = useState(initialCompanyId ? 1 : 0);
-  const [companyMode, setCompanyMode] = useState<"existing" | "create">(companies.length ? "existing" : "create");
-  const [companyId, setCompanyId] = useState(initialCompanyId ?? companies[0]?.id ?? "");
-  const [companyName, setCompanyName] = useState("");
-  const [domain, setDomain] = useState("");
-  const [phone, setPhone] = useState("");
-  const [city, setCity] = useState("");
-  const [contactMode, setContactMode] = useState<"existing" | "create">("existing");
-  const [contactId, setContactId] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [title, setTitle] = useState("");
-  const [dealName, setDealName] = useState("");
-  const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("USD");
-  const [stageId, setStageId] = useState(stages[0]?.id ?? "");
-  const [ownerId, setOwnerId] = useState(initialOwnerId);
-  const [expectedCloseDate, setExpectedCloseDate] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
-
-  const companyContacts = useMemo(
-    () => contacts.filter((contact) => contact.companyId === companyId),
-    [contacts, companyId],
+  const seeded = companies.find((company) => company.id === initialCompanyId);
+  const [company, setCompany] = React.useState<CompanyChoice | undefined>(
+    seeded ? { mode: "existing", id: seeded.id, name: seeded.name } : undefined,
   );
-  const chosenCompany = companies.find((company) => company.id === companyId);
-  const chosenContact = companyContacts.find((contact) => contact.id === contactId);
+  const [contact, setContact] = React.useState<ContactChoice | undefined>();
+  const [step, setStep] = React.useState<Step>(seeded ? "contact" : "company");
+  const [companyQuery, setCompanyQuery] = React.useState("");
+  const [contactQuery, setContactQuery] = React.useState("");
+  const [dealName, setDealName] = React.useState("");
+  const [amount, setAmount] = React.useState("");
+  const [currency, setCurrency] = React.useState("USD");
+  const [stageId, setStageId] = React.useState(stages[0]?.id ?? "");
+  const [ownerId, setOwnerId] = React.useState(initialOwnerId);
+  const [expectedCloseDate, setExpectedCloseDate] = React.useState("");
+  const [localError, setLocalError] = React.useState<string | null>(null);
 
-  function companyReady() {
-    if (companyMode === "create") return companyName.trim().length > 0;
-    return Boolean(companyId);
-  }
+  const companyContacts =
+    company?.mode === "existing" ? contacts.filter((item) => item.companyId === company.id) : [];
+  const filteredCompanies = companies.filter((item) => item.name.toLowerCase().includes(companyQuery.trim().toLowerCase()));
+  const filteredContacts = companyContacts.filter((item) => item.name.toLowerCase().includes(contactQuery.trim().toLowerCase()));
 
-  function contactReady() {
-    if (companyMode === "create" || contactMode === "create" || companyContacts.length === 0) {
-      return firstName.trim().length > 0 && lastName.trim().length > 0;
-    }
-    return Boolean(contactId);
-  }
-
-  function goNext() {
+  function pickCompany(next: CompanyChoice) {
+    setCompany(next);
+    setContact(undefined);
+    setStep("contact");
     setLocalError(null);
-    if (step === 0 && !companyReady()) {
-      setLocalError(companyMode === "create" ? "Name is required" : "Choose a company");
-      return;
-    }
-    if (step === 1 && !contactReady()) {
-      setLocalError(companyContacts.length === 0 || contactMode === "create" ? "First and last name are required" : "Choose a contact");
-      return;
-    }
-    if (step === 1 && (companyMode === "create" || companyContacts.length === 0)) {
-      setContactMode("create");
-    }
-    setStep((current) => Math.min(2, current + 1));
+  }
+  function pickContact(next: ContactChoice) {
+    setContact(next);
+    setStep("details");
+    setLocalError(null);
   }
 
   function jumpToError(error: ApiError) {
     const fields = error.fieldErrors ?? {};
-    if (fields.email || fields.firstName || fields.lastName || fields.title || fields.contactId) setStep(1);
-    else if (fields.domain || fields.companyId || fields.city) setStep(0);
+    if (fields.domain || fields.city || fields.companyId) setStep("company");
+    else if (fields.email || fields.firstName || fields.lastName || fields.title || fields.contactId) setStep("contact");
   }
 
-  const creatingContact = companyMode === "create" || contactMode === "create" || companyContacts.length === 0;
-  const companyLabel = companyMode === "create" ? companyName || "New company" : chosenCompany?.name ?? "Company";
-  const contactLabel = creatingContact ? `${firstName} ${lastName}`.trim() || "New contact" : chosenContact?.name ?? "Contact";
+  const companyLabel = company?.name ?? "Company";
+  const contactLabel =
+    contact?.mode === "create" ? `${contact.firstName} ${contact.lastName}`.trim() : contact?.name ?? "Contact";
 
   return (
-    <div data-testid="deal-wizard">
-      <div className="steps" aria-label="Deal steps">
-        {STEPS.map((label, index) => (
-          <span key={label} data-state={index === step ? "current" : index < step ? "done" : "upcoming"}>
-            <em>{index + 1}</em>
-            {label}
-          </span>
-        ))}
-      </div>
+    <div className="flex flex-col gap-5" data-testid="deal-wizard">
+      <Steps step={step} companyLabel={company ? companyLabel : undefined} contactLabel={contact ? contactLabel : undefined} />
       <FormError message={localError || formError} />
-      {step === 0 ? (
-        <div className="form">
-          <div className="choice-list">
-            {companies.map((company) => (
-              <label className="choice" key={company.id}>
-                <input
-                  type="radio"
-                  name="companyChoice"
-                  value={company.id}
-                  checked={companyMode === "existing" && companyId === company.id}
-                  onChange={() => {
-                    setCompanyMode("existing");
-                    setCompanyId(company.id);
-                    setContactId("");
-                  }}
-                />
-                <span>{company.name}</span>
-              </label>
-            ))}
-            <label className="choice">
-              <input
-                type="radio"
-                name="companyChoice"
-                value="create"
-                checked={companyMode === "create"}
-                onChange={() => setCompanyMode("create")}
-              />
-              <span>Create a new company</span>
-            </label>
+
+      {step === "company" ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-medium">Choose a company</h2>
+            <CreateDialog
+              label="New company"
+              title="New company"
+              fields={[
+                { name: "name", label: "Name", required: true },
+                { name: "domain", label: "Domain" },
+                { name: "phone", label: "Phone" },
+                { name: "city", label: "City" },
+              ]}
+              onCreate={(values) =>
+                pickCompany({
+                  mode: "create",
+                  name: values.name ?? "",
+                  domain: values.domain ?? "",
+                  phone: values.phone ?? "",
+                  city: values.city ?? "",
+                })
+              }
+            />
           </div>
-          {companyMode === "create" ? (
-            <div className="form two">
-              <Field label="Company name" name="companyName" error={fieldErrors.name}>
-                <input id="companyName" value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
-              </Field>
-              <Field label="Domain" name="domain" error={fieldErrors.domain}>
-                <input id="domain" value={domain} onChange={(event) => setDomain(event.target.value)} placeholder="example.com" />
-              </Field>
-              <Field label="Phone" name="phone" error={fieldErrors.phone}>
-                <input id="phone" value={phone} onChange={(event) => setPhone(event.target.value)} />
-              </Field>
-              <Field label="City" name="city" error={fieldErrors.city}>
-                <input id="city" value={city} onChange={(event) => setCity(event.target.value)} />
-              </Field>
-            </div>
+          {companies.length > 5 ? (
+            <Input placeholder="Search companies…" value={companyQuery} onChange={(event) => setCompanyQuery(event.target.value)} />
           ) : null}
-          {fieldErrors.companyId ? <em className="field-error">{fieldErrors.companyId}</em> : null}
+          <PickList
+            items={filteredCompanies.map((item) => ({ id: item.id, primary: item.name }))}
+            onPick={(id) => {
+              const found = companies.find((item) => item.id === id);
+              if (found) pickCompany({ mode: "existing", id: found.id, name: found.name });
+            }}
+            empty="No companies yet — create one to start."
+          />
+          {fieldErrors.companyId || fieldErrors.domain ? (
+            <p className="text-sm text-destructive">{fieldErrors.companyId || fieldErrors.domain}</p>
+          ) : null}
         </div>
       ) : null}
-      {step === 1 ? (
-        <div className="form">
-          <p className="muted">Contacts at {companyLabel}.</p>
-          {companyMode === "existing" && companyContacts.length > 0 ? (
-            <div className="choice-list">
-              {companyContacts.map((contact) => (
-                <label className="choice" key={contact.id}>
-                  <input
-                    type="radio"
-                    name="contactChoice"
-                    value={contact.id}
-                    checked={contactMode === "existing" && contactId === contact.id}
-                    onChange={() => {
-                      setContactMode("existing");
-                      setContactId(contact.id);
-                    }}
-                  />
-                  <span>{contact.name}</span>
-                </label>
-              ))}
-              <label className="choice">
-                <input type="radio" name="contactChoice" value="create" checked={contactMode === "create"} onChange={() => setContactMode("create")} />
-                <span>Create a new contact</span>
-              </label>
-            </div>
+
+      {step === "contact" && company ? (
+        <div className="flex flex-col gap-3">
+          <BackButton onClick={() => setStep("company")} label={`Company: ${companyLabel}`} />
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-medium">Choose a contact</h2>
+            <CreateDialog
+              label="New contact"
+              title={`New contact at ${companyLabel}`}
+              fields={[
+                { name: "firstName", label: "First name", required: true },
+                { name: "lastName", label: "Last name", required: true },
+                { name: "email", label: "Email", type: "email" },
+                { name: "title", label: "Title" },
+              ]}
+              onCreate={(values) =>
+                pickContact({
+                  mode: "create",
+                  firstName: values.firstName ?? "",
+                  lastName: values.lastName ?? "",
+                  email: values.email ?? "",
+                  title: values.title ?? "",
+                })
+              }
+            />
+          </div>
+          {company.mode === "create" ? (
+            <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              {companyLabel} is new, so add the first contact.
+            </p>
           ) : (
-            <p className="muted">This company has no contacts yet. Add the first one.</p>
+            <>
+              {companyContacts.length > 5 ? (
+                <Input placeholder="Search contacts…" value={contactQuery} onChange={(event) => setContactQuery(event.target.value)} />
+              ) : null}
+              <PickList
+                items={filteredContacts.map((item) => ({ id: item.id, primary: item.name }))}
+                onPick={(id) => {
+                  const found = companyContacts.find((item) => item.id === id);
+                  if (found) pickContact({ mode: "existing", id: found.id, name: found.name });
+                }}
+                empty="No contacts at this company yet — create one."
+              />
+            </>
           )}
-          {creatingContact ? (
-            <div className="form two">
-              <Field label="First name" name="firstName" error={fieldErrors.firstName}>
-                <input id="firstName" value={firstName} onChange={(event) => setFirstName(event.target.value)} />
-              </Field>
-              <Field label="Last name" name="lastName" error={fieldErrors.lastName}>
-                <input id="lastName" value={lastName} onChange={(event) => setLastName(event.target.value)} />
-              </Field>
-              <Field label="Email" name="email" error={fieldErrors.email}>
-                <input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
-              </Field>
-              <Field label="Title" name="title" error={fieldErrors.title}>
-                <input id="title" value={title} onChange={(event) => setTitle(event.target.value)} />
-              </Field>
-            </div>
+          {fieldErrors.contactId || fieldErrors.email ? (
+            <p className="text-sm text-destructive">{fieldErrors.contactId || fieldErrors.email}</p>
           ) : null}
-          {fieldErrors.contactId ? <em className="field-error">{fieldErrors.contactId}</em> : null}
         </div>
       ) : null}
-      {step === 2 ? (
-        <div className="form">
-          <div className="summary">
-            <div>
-              <span>Company</span>
-              <strong>{companyLabel}</strong>
-            </div>
-            <div>
-              <span>Contact</span>
-              <strong>{contactLabel}</strong>
-            </div>
-          </div>
-          <div className="form two">
-            <Field label="Name" name="dealName" error={fieldErrors.name}>
-              <input id="dealName" value={dealName} onChange={(event) => setDealName(event.target.value)} />
-            </Field>
-            <Field label="Amount" name="amount" error={fieldErrors.amount}>
-              <input id="amount" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
-            </Field>
-            <Field label="Currency" name="currency" error={fieldErrors.currency}>
-              <input id="currency" value={currency} maxLength={3} onChange={(event) => setCurrency(event.target.value)} />
-            </Field>
-            <Field label="Stage" name="stageId" error={fieldErrors.stageId}>
-              <select id="stageId" value={stageId} onChange={(event) => setStageId(event.target.value)}>
-                {stages.map((stage) => (
-                  <option key={stage.id} value={stage.id}>
-                    {stage.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Owner" name="ownerId" error={fieldErrors.ownerId}>
-              <select id="ownerId" value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
-                {owners.map((owner) => (
-                  <option key={owner.id} value={owner.id}>
-                    {owner.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Expected close" name="expectedCloseDate" error={fieldErrors.expectedCloseDate}>
-              <input id="expectedCloseDate" type="date" value={expectedCloseDate} onChange={(event) => setExpectedCloseDate(event.target.value)} />
-            </Field>
-          </div>
-        </div>
-      ) : null}
-      <div className="actions">
-        {step > 0 ? (
-          <button className="button secondary" type="button" onClick={() => setStep((current) => current - 1)}>
-            Back
-          </button>
-        ) : null}
-        {step < 2 ? (
-          <button className="button" type="button" onClick={goNext}>
-            Continue
-          </button>
-        ) : (
-          <button
-            className="button"
-            type="button"
-            disabled={!ready || pending}
-            onClick={() => {
+
+      {step === "details" && company && contact ? (
+        <div className="flex flex-col gap-4">
+          <BackButton onClick={() => setStep("contact")} label={`${companyLabel} · ${contactLabel}`} />
+          <h2 className="text-lg font-medium">Deal details</h2>
+          <form
+            className="grid gap-3 sm:grid-cols-2"
+            onSubmit={(event) => {
+              event.preventDefault();
               if (!dealName.trim() || !amount.trim()) {
                 setLocalError("Name and amount are required");
                 return;
               }
               setLocalError(null);
-              const company =
-                companyMode === "existing"
-                  ? { mode: "existing" as const, id: companyId }
-                  : { mode: "create" as const, name: companyName, domain, phone, city };
-              const contact = creatingContact
-                ? { mode: "create" as const, firstName, lastName, email, title }
-                : { mode: "existing" as const, id: contactId };
+              const companyBody =
+                company.mode === "existing"
+                  ? { mode: "existing" as const, id: company.id }
+                  : { mode: "create" as const, name: company.name, domain: company.domain, phone: company.phone, city: company.city };
+              const contactBody =
+                contact.mode === "existing"
+                  ? { mode: "existing" as const, id: contact.id }
+                  : {
+                      mode: "create" as const,
+                      firstName: contact.firstName,
+                      lastName: contact.lastName,
+                      email: contact.email,
+                      title: contact.title,
+                    };
               void submit(async () => {
                 const created = await api<{ id: string }>("/api/deals/wizard", {
                   method: "POST",
                   body: {
-                    company,
-                    contact,
+                    company: companyBody,
+                    contact: contactBody,
                     deal: { name: dealName, amount, currency, stageId, ownerId, expectedCloseDate },
                   },
                 });
                 router.push(`/deals/${created.id}`);
                 router.refresh();
-              }, (error) => jumpToError(error));
+              }, jumpToError);
             }}
           >
-            {pending ? "Saving…" : "Save deal"}
-          </button>
-        )}
-      </div>
+            <Field label="Name" name="dealName" error={fieldErrors.name}>
+              <Input id="dealName" value={dealName} onChange={(event) => setDealName(event.target.value)} />
+            </Field>
+            <Field label="Amount" name="amount" error={fieldErrors.amount}>
+              <Input id="amount" value={amount} placeholder="0.00" onChange={(event) => setAmount(event.target.value)} />
+            </Field>
+            <Field label="Currency" name="currency" error={fieldErrors.currency}>
+              <Input id="currency" value={currency} maxLength={3} onChange={(event) => setCurrency(event.target.value)} />
+            </Field>
+            <Field label="Stage" name="stageId" error={fieldErrors.stageId}>
+              <Select id="stageId" value={stageId} onChange={(event) => setStageId(event.target.value)}>
+                {stages.map((stage) => (
+                  <option key={stage.id} value={stage.id}>
+                    {stage.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Owner" name="ownerId" error={fieldErrors.ownerId}>
+              <Select id="ownerId" value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
+                {owners.map((owner) => (
+                  <option key={owner.id} value={owner.id}>
+                    {owner.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Expected close" name="expectedCloseDate" error={fieldErrors.expectedCloseDate}>
+              <Input
+                id="expectedCloseDate"
+                type="date"
+                value={expectedCloseDate}
+                onChange={(event) => setExpectedCloseDate(event.target.value)}
+              />
+            </Field>
+            <div className="sm:col-span-2">
+              <Button type="submit" disabled={!ready || pending}>
+                {pending ? "Saving…" : "Save deal"}
+              </Button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function Steps({ step, companyLabel, contactLabel }: { step: Step; companyLabel?: string; contactLabel?: string }) {
+  const order: Step[] = ["company", "contact", "details"];
+  const labels: Record<Step, string> = {
+    company: companyLabel ?? "Company",
+    contact: contactLabel ?? "Contact",
+    details: "Details",
+  };
+  const activeIdx = order.indexOf(step);
+  return (
+    <ol className="flex flex-wrap items-center gap-2 text-sm">
+      {order.map((item, index) => {
+        const done = index < activeIdx;
+        const active = index === activeIdx;
+        return (
+          <React.Fragment key={item}>
+            {index > 0 ? <ChevronRight className="size-4 text-muted-foreground" /> : null}
+            <li className={active ? "font-medium text-foreground" : done ? "text-foreground" : "text-muted-foreground"}>
+              <span className="inline-flex items-center gap-1">
+                {done ? <Check className="size-3.5 text-[var(--success)]" /> : null}
+                {labels[item]}
+              </span>
+            </li>
+          </React.Fragment>
+        );
+      })}
+    </ol>
+  );
+}
+
+function BackButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground"
+    >
+      <ChevronLeft className="size-4" /> {label}
+    </button>
+  );
+}
+
+function PickList({
+  items,
+  onPick,
+  empty,
+}: {
+  items: { id: string; primary: string; secondary?: string }[];
+  onPick: (id: string) => void;
+  empty: string;
+}) {
+  if (items.length === 0) {
+    return <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">{empty}</p>;
+  }
+  return (
+    <ul className="flex flex-col gap-2">
+      {items.map((item) => (
+        <li key={item.id}>
+          <button
+            type="button"
+            onClick={() => onPick(item.id)}
+            className="flex w-full items-center justify-between rounded-lg border p-4 text-left transition-colors hover:bg-accent"
+          >
+            <span className="min-w-0">
+              <span className="block font-medium">{item.primary}</span>
+              {item.secondary ? <span className="block truncate text-sm text-muted-foreground">{item.secondary}</span> : null}
+            </span>
+            <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }

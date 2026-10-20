@@ -59,54 +59,63 @@ export function PipelineBoard({ stages, deals }: { stages: BoardStage[]; deals: 
   }
 
   return (
-    <div>
-      {error ? <p className="form-error">{error}</p> : null}
-      <div className="board" data-testid="pipeline-board">
-        {stages.map((stage) => (
-          <section
-            key={stage.id}
-            className={over === stage.id ? "column over" : "column"}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setOver(stage.id);
-            }}
-            onDragLeave={() => setOver((current) => (current === stage.id ? null : current))}
-            onDrop={(event) => {
-              event.preventDefault();
-              setOver(null);
-              // React delegates the drop listener, and some browsers clear
-              // dataTransfer before that listener runs. The ref is the copy.
-              const dealId = dragging.current || event.dataTransfer.getData("text/plain");
-              dragging.current = null;
-              if (dealId) move(dealId, stage.id);
-            }}
-          >
-            <header>
-              <strong>{stage.name}</strong>
-              <span>{items.filter((deal) => deal.stageId === stage.id).length}</span>
-            </header>
-            {items
-              .filter((deal) => deal.stageId === stage.id)
-              .map((deal) => (
-                <article
-                  key={deal.id}
-                  className="deal-card"
-                  draggable
-                  onDragStart={(event) => {
-                    dragging.current = deal.id;
-                    event.dataTransfer.setData("text/plain", deal.id);
-                    event.dataTransfer.effectAllowed = "move";
-                  }}
-                >
-                  <Link href={`/deals/${deal.id}`}>
-                    <strong>{deal.name}</strong>
-                  </Link>
-                  <span>{formatMoney(deal.amountCents, deal.currency)}</span>
-                  <span>{deal.companyName}</span>
-                </article>
-              ))}
-          </section>
-        ))}
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      <div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2 md:snap-none" data-testid="pipeline-board">
+        {stages.map((stage) => {
+          const column = items.filter((deal) => deal.stageId === stage.id);
+          return (
+            <section
+              key={stage.id}
+              className={`flex w-[85vw] max-w-[340px] shrink-0 snap-start flex-col rounded-xl border bg-muted/40 sm:w-[330px] ${over === stage.id ? "border-primary" : "border-border"}`}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setOver(stage.id);
+              }}
+              onDragLeave={() => setOver((current) => (current === stage.id ? null : current))}
+              onDrop={(event) => {
+                event.preventDefault();
+                setOver(null);
+                // React delegates the drop listener, and some browsers clear
+                // dataTransfer before that listener runs. The ref is the copy.
+                const dealId = dragging.current || event.dataTransfer.getData("text/plain");
+                dragging.current = null;
+                if (dealId) move(dealId, stage.id);
+              }}
+            >
+              <header className="flex items-center justify-between gap-2 border-b border-border/70 p-3">
+                <span className="text-sm font-medium">{stage.name}</span>
+                <span className="text-xs font-medium text-muted-foreground">{column.length}</span>
+              </header>
+              <div className="flex max-h-[calc(100dvh-15rem)] min-h-[6rem] flex-col gap-2 overflow-y-auto p-2">
+                {column.length === 0 ? (
+                  <div className="m-1 rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
+                    Nothing here
+                  </div>
+                ) : (
+                  column.map((deal) => (
+                    <article
+                      key={deal.id}
+                      draggable
+                      onDragStart={(event) => {
+                        dragging.current = deal.id;
+                        event.dataTransfer.setData("text/plain", deal.id);
+                        event.dataTransfer.effectAllowed = "move";
+                      }}
+                      className="cursor-grab rounded-lg border border-border bg-card p-3 shadow-sm"
+                    >
+                      <Link href={`/deals/${deal.id}`} className="block truncate text-sm font-medium hover:underline">
+                        {deal.name}
+                      </Link>
+                      <div className="mt-1 truncate text-xs text-muted-foreground">{deal.companyName}</div>
+                      <div className="mt-2 text-xs font-medium tabular-nums">{formatMoney(deal.amountCents, deal.currency)}</div>
+                    </article>
+                  ))
+                )}
+              </div>
+            </section>
+          );
+        })}
       </div>
     </div>
   );

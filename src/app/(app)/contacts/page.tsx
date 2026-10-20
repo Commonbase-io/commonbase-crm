@@ -36,7 +36,7 @@ export default async function ContactsPage({
           action={{ href: "/contacts/new", label: "New contact" }}
         />
       ) : (
-      <div className="table-wrap">
+      <div className="surface-card overflow-hidden">
         <table>
           <thead>
             <tr>
