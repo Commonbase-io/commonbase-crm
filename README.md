@@ -35,6 +35,8 @@ Seeded demo logins (password `demo-password-1`, all synthetic):
 | `admin@brs-demo.example`, `manager@brs-demo.example`, `rep@brs-demo.example` | BRS (demo) |
 | `admin@harbor-demo.example`, `rep@harbor-demo.example` | Harbor Facilities (demo) |
 
+Auth emails (invites, password resets) go to the local Mailpit inbox at http://127.0.0.1:54324.
+
 `npm run db:reset` re-applies migrations and seed. After a schema change, run `npm run db:types`.
 
 Background syncs run on a schedule in production. Locally, either click **Sync now** on Settings → Integrations, or run:
@@ -58,7 +60,11 @@ npm run test:e2e     # Playwright; needs db:start and npm run build
 ## Deployment (Vercel)
 
 1. Create a Supabase project and run `npx supabase db push` to apply the migrations. **Don't run `seed.sql` in production.**
-2. In the Supabase dashboard, keep email/password sign-in on and public sign-ups off (tenants and users are provisioned by Commonbase).
+2. In the Supabase dashboard:
+   - keep email/password sign-in on and public sign-ups off (tenants and users are provisioned by Commonbase)
+   - set **Site URL** to the app's URL
+   - configure custom SMTP (the built-in sender is heavily rate-limited)
+   - copy the invite and recovery templates from `supabase/templates/` (their links go to `/auth/confirm`)
 3. Set the env vars above in Vercel. `SUPABASE_SERVICE_ROLE_KEY` must not be exposed to the client.
 4. `vercel.json` schedules `/api/jobs/run` every 15 minutes. Check your Vercel plan's cron limits; if it only allows daily runs, use an external scheduler that sends the same bearer header.
 5. Leave `APOLLO_LIVE_GATE=locked` until every item in `docs/apollo-integration-gates.md` is done.

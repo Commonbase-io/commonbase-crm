@@ -1,5 +1,7 @@
 # Commonbase Sales OS: Claude Project Instructions
 
+> **Current working plan:** `docs/CODEBASE_REVIEW_AND_PLAN.md` (review and brief), `docs/CURRENT_STATE_AUDIT.md` (what's verified), and `docs/IMPLEMENTATION_PLAN.md` (next PRs). Read them before starting work; this file remains the source of product rules and guardrails.
+
 ## Mission
 Build a secure, reusable, multi-tenant B2B sales application for Commonbase. BRS (a commercial moving company) is the first pilot tenant. Authorized users manage companies, contacts, opportunities, and outbound campaigns through a branded dashboard. Apollo is a **replaceable** prospecting/outreach integration, not the system of record. Commonbase Postgres owns CRM state.
 

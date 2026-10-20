@@ -9,11 +9,11 @@
 - [x] 5. Seed: BRS plus a second synthetic tenant, each with its own mock Apollo connection
 - [~] 6. Pages on the mock provider
   - [x] Overview (KPIs, quote-to-win, median days to quote, funnel, date and campaign filters, Demo data label)
-  - [x] Settings: general, team (read-only), integrations (status, holder, billing, authorization, mailboxes, sync)
+  - [x] Settings: general, team, integrations (status, holder, billing, authorization, mailboxes, sync)
   - [x] Prospects: search via registry, trigger-event ranking, review, dedupe, save, optional enrichment, suppression and customer exclusion
   - [x] Campaigns: list, draft editor, steps (add, edit, reorder, delete), mailbox, compliance panel, approval, back to draft, enrollment with opt-out sync and idempotency, pause, resume, complete, retry pending
   - [x] Pipeline: board and table views, owner filter, stage moves with required lost reason, create, reassign, detail page with notes, tasks, and contact activity
-  - [ ] Team management actions (invite, change role, remove), audit logged
+  - [x] Team management actions (invite, add existing account, change role, remove, resend), audit logged, last-admin protection
 - [~] 7. Tests
   - [x] RLS cross-tenant reads and writes, role rules, credential column, composite FKs
   - [x] Credential isolation in the provider registry
@@ -28,13 +28,16 @@
 - [x] 8. Postgres job runner: scheduled opt-out sync, email activity sync (bounces suppressed), enrollment reconciliation, retries with backoff, failures and "Sync now" on Integrations
 - [x] 9. Environment variables, setup, tests, deployment (README)
 
+- [x] Fix silent truncation at the 1,000-row API cap (suppression lookups, enrollment, KPIs, pipeline)
+- [ ] Remaining Priority 0 hardening: see `IMPLEMENTATION_PLAN.md` "PR next" (activity integrity, security headers, capped lists, retention, health check, ops docs)
+
 ## Phase B: live Apollo (blocked)
 
 - [ ] 10. Only after explicit confirmation: implement the real adapter (`apollo-integration-gates.md`)
 
 ## Phase C: digital marketing dashboard (planned, not scheduled)
 
-Scope and rules are in `CLAUDE.md` under "Planned: digital marketing dashboard". Do not start until it is explicitly scheduled.
+Scope and rules are in `CLAUDE.md` under "Planned: digital marketing dashboard"; the phased, migration-level plan is in `IMPLEMENTATION_PLAN.md` (attribution foundation first, then website form intake). Do not start until it is explicitly scheduled.
 
 - [ ] Website management (pages, landing pages, forms that create attributed leads, health)
 - [ ] SEO tracking (keywords, rankings, impressions, clicks, CTR, technical issues)

@@ -16,7 +16,7 @@ The source of truth is `supabase/migrations/`. Generated TypeScript types are in
 |---|---|
 | tenants | `slug` unique; `postal_address` (required to approve campaigns); `config` jsonb for tenant-specific settings such as trigger event types and target titles |
 | profiles | 1:1 with `auth.users`; created by trigger |
-| memberships | PK `(tenant_id, user_id)`; role `tenant_admin`, `sales_manager`, or `sales_rep` |
+| memberships | PK `(tenant_id, user_id)`; role `tenant_admin`, `sales_manager`, or `sales_rep`; trigger `memberships_keep_admin` keeps at least one admin per tenant |
 | provider_connections | One `pending` or `connected` row per tenant and provider (partial unique index). Holds `mode` (`mock` or `live`), `account_holder`, `billing_party`, `plan_tier`, `authorization_confirmed_at`, and `credential_ref` (server only). A live connection can't be `connected` without an authorization date and a credential. A revoked connection has no credential. |
 | mailboxes | Belong to a connection; unique `(tenant_id, provider_connection_id, id)` lets campaigns require a mailbox from their own connection |
 | companies | Dedupe on `(tenant_id, domain)`; domain stored normalized; `is_customer` |
@@ -35,6 +35,20 @@ The source of truth is `supabase/migrations/`. Generated TypeScript types are in
 | audit_logs | Append only, even for the service role (a trigger blocks update and delete; tenant deletion cascades) |
 
 Deviations from the original spec, on purpose: `tenants.postal_address` and `config`; `provider_connections.mode`; `contacts.email_status`; `opportunities.title` and milestone columns; `campaigns.last_error`; `jobs.max_attempts`, `locked_at`, and `locked_by`; `idempotency_keys.request_hash`. Each one supports a stated requirement.
+
+## Server-only functions
+
+Executable by `service_role` only:
+
+| Function | Purpose |
+|---|---|
+| `enqueue_job`, `claim_jobs` | Job queue |
+| `find_auth_user_id` | Is there an existing account for this email? |
+| `tenant_member_accounts` | Members' emails and sign-in state, for admins |
+
+## API row cap
+
+The Data API returns at most `max_rows` rows (1000) **without an error**. Never load a whole table: look up the rows you need, or page with `fetchAllPages()` (`src/server/supabase/paginate.ts`).
 
 ## RLS summary
 
