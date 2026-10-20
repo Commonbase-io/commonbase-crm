@@ -35,6 +35,19 @@ Browser
 - `mock-apollo/` is deterministic per connection. It makes no network calls and sends nothing.
 - `apollo/` is the live adapter. It deliberately throws until every gate in `apollo-integration-gates.md` is met.
 
+## Campaign enrollment
+
+`src/server/campaigns/campaigns.ts` `enrollContacts()`:
+
+1. The form carries a one-time idempotency key (`idempotency_keys`). A double submit or retry returns the first result; a concurrent duplicate is refused.
+2. Opt-outs are synced from the tenant's provider into `suppression_entries` (`src/server/compliance/opt-out-sync.ts`). If the sync fails, enrollment stops, and the failure shows on the Integrations page.
+3. Suppression (email and domain) is re-checked per contact (`enrollment-plan.ts`). The `campaign_contacts` trigger checks again in the database.
+4. The provider sequence is created with a key derived from the campaign id, so a retry reuses it.
+5. Rows are marked `enrolling` before the provider call and `enrolled` or `failed` after. Rows stuck in `enrolling` after a crash or timeout are re-sent by "Retry pending" (`retryPendingEnrollments()`), which is safe because the provider maps the same sequence and contact to the same enrollment.
+6. A first enrollment activates the campaign (`approved → enrolling → active`). Resume also syncs opt-outs first.
+
+Status changes use the service role (the authenticated role can't write `status`), always after `assertCan` and filtered by tenant, with an optimistic check on the current status.
+
 ## Background work
 
 The `jobs` and `sync_jobs` tables exist. The runner (simulated sync, opt-out sync, reconciliation) is the next build step. Trigger.dev comes after live sync is unblocked.

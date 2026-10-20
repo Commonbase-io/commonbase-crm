@@ -135,8 +135,9 @@ export function createMockApolloAdapters(input: {
   const byId = new Map(pool.map((entry) => [entry.person.externalId, entry]));
   const mailboxId = `mock-mbx-${shortId(connectionId, "mailbox")}`;
 
-  // Sequence ids carry a per-connection prefix so one tenant's adapter rejects another's ids.
-  const sequencePrefix = `mock-seq-${shortId(connectionId, "seq").slice(0, 8)}-`;
+  // Sequence ids embed the connection id, so one tenant's adapter rejects another's
+  // ids and seed data can reference a valid sequence.
+  const sequencePrefix = `mock-seq-${connectionId}-`;
   const sequenceIdFor = (key: string) => sequencePrefix + shortId(connectionId, "seq", key);
   const assertOwnSequence = (sequenceId: string) => {
     if (!sequenceId.startsWith(sequencePrefix)) throw new Error("Unknown sequence for this connection");

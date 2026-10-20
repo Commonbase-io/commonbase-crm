@@ -173,7 +173,7 @@ insert into public.sequence_steps (tenant_id, campaign_id, position, step_type, 
 update public.campaigns
    set status = 'approved', approved_by = 'a0000000-0000-4000-8000-0000000000a2', approved_at = now() - interval '20 days'
  where id = 'a3000000-0000-4000-8000-000000000001';
-update public.campaigns set status = 'enrolling', external_id = 'mock-seq-brs-1'
+update public.campaigns set status = 'enrolling', external_id = 'mock-seq-a0000000-0000-4000-8000-0000000000c1-seed1'
  where id = 'a3000000-0000-4000-8000-000000000001';
 
 insert into public.campaign_contacts (tenant_id, campaign_id, contact_id, enrollment_status, enrolled_at, external_ref) values

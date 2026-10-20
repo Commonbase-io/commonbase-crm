@@ -11,7 +11,7 @@
   - [x] Overview (KPIs, quote-to-win, median days to quote, funnel, date and campaign filters, Demo data label)
   - [x] Settings: general, team (read-only), integrations (status, holder, billing, authorization, mailboxes, sync)
   - [x] Prospects: search via registry, trigger-event ranking, review, dedupe, save, optional enrichment, suppression and customer exclusion
-  - [ ] Campaigns: list, draft editor, steps, mailbox, approval, enrollment with idempotency, pause
+  - [x] Campaigns: list, draft editor, steps (add, edit, reorder, delete), mailbox, compliance panel, approval, back to draft, enrollment with opt-out sync and idempotency, pause, resume, complete, retry pending
   - [x] Pipeline: board and table views, owner filter, stage moves with required lost reason, create, reassign, detail page with notes, tasks, and contact activity
   - [ ] Team management actions (invite, change role, remove), audit logged
 - [~] 7. Tests
@@ -21,7 +21,8 @@
   - [x] E2E smoke (login, tenant 404, role gating, integrations, staff chooser)
   - [x] E2E prospects (search, save with enrichment, dedupe, role gating, trigger filter)
   - [x] E2E pipeline (stage moves, lost reason, rep ownership, table and filters, create, notes, tasks, contact/company mismatch, cross-tenant id)
-  - [ ] Service-level enrollment idempotency and retry tests
+  - [x] Enrollment plan, state machine, and idempotency unit tests
+  - [x] E2E campaigns (compliance gate, create to enroll, suppressed skips, back to draft, pause and resume, rep gating, cross-tenant id)
 - [ ] 8. Postgres job runner: simulated activity sync, opt-out sync into suppression, reconciliation; failures visible on Integrations
 - [x] 9. Environment variables, setup, tests, deployment (README)
 
