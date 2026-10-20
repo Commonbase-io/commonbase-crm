@@ -29,6 +29,15 @@
 
 - [ ] 10. Only after explicit confirmation: implement the real adapter (`apollo-integration-gates.md`)
 
+## Phase C: digital marketing dashboard (planned, not scheduled)
+
+Scope and rules are in `CLAUDE.md` under "Planned: digital marketing dashboard". Do not start until it is explicitly scheduled.
+
+- [ ] Website management (pages, landing pages, forms that create attributed leads, health)
+- [ ] SEO tracking (keywords, rankings, impressions, clicks, CTR, technical issues)
+- [ ] Paid ad campaigns (read-only first; spend changes need approval, budget caps, audit log)
+- [ ] Marketing analytics (leads by source, website impressions and clicks, social interactions, tied to pipeline outcomes)
+
 ## Deferred until tenant #2 signs
 
 - In-app workspace switcher (a simple chooser exists at `/app`)

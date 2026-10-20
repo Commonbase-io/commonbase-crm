@@ -70,6 +70,38 @@ Build a secure, reusable, multi-tenant B2B sales application for Commonbase. BRS
 - Trigger.dev migration
 - Self-serve tenant onboarding
 
+### Planned: digital marketing dashboard (do not build yet)
+The app will grow from an outbound sales tool into a digital marketing dashboard for each tenant. **This is not in the MVP.** Do not build it, add schema for it, or add navigation for it until it is explicitly scheduled. When it is, plan it the same way as the sales features: tenant-scoped, provider-neutral, mock-first, and gated before any live connection.
+
+**1. Website management**
+- Manage the tenant's website content (pages, landing pages, forms), or connect to their existing site or CMS
+- Website forms create leads in the CRM with source attribution (page, campaign, UTM parameters)
+- Uptime and basic health status
+
+**2. SEO tracking**
+- Tracked keywords and rankings over time, by page
+- Search impressions, clicks, click-through rate, and average position
+- Technical SEO issues (indexing, broken links, page speed, metadata)
+
+**3. Paid ad campaigns**
+- View and manage paid campaigns across ad platforms: budgets, status, creatives, targeting
+- Spend, impressions, clicks, conversions, cost per lead, and cost per won deal
+- **Any change that spends money (launch, budget increase, resume) needs explicit human approval, a per-tenant budget cap, and an audit log entry.** Start read-only; add write actions later and behind approval.
+
+**4. Marketing analytics**
+- Leads by source and channel (organic, paid, social, outbound, referral)
+- Website impressions, sessions, and clicks
+- Social media interactions (reach, engagements, followers, clicks) by platform
+- Tie marketing activity to pipeline outcomes: leads, then qualified conversations, quote requests, and won deals, so the dashboard optimizes for revenue, not vanity metrics
+
+**Rules carried over from the sales MVP**
+- Each tenant connects its **own** accounts (analytics, search console, ad accounts, social pages). Nothing is shared between tenants.
+- Every external service sits behind a provider interface (for example `WebsiteProvider`, `SeoProvider`, `AdsProvider`, `AnalyticsProvider`, `SocialProvider`) with a mock adapter first, resolved per tenant connection like the Apollo registry.
+- Treat every platform's APIs, auth methods, scopes, rate limits, data-retention terms, and pricing as **unverified until checked against current official documentation**. Do not invent endpoints.
+- Credentials stay server-side, referenced by `credential_ref`, never logged.
+- Metrics from mock providers are labelled `Demo data`.
+- Respect each platform's terms on data storage and user consent; store aggregated metrics rather than raw personal data where possible.
+
 ## BRS context (pilot tenant)
 Commercial moving demand is event-driven. Timing matters more than title.
 - Buyers: facilities managers, office managers, operations directors, real estate and workplace leads, sometimes CFOs at smaller firms
