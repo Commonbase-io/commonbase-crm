@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+/* Restrained neutral palette. No tenant branding in shared tokens. */
+:root {
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.2 0 0);
+  --surface: oklch(1 0 0);
+  --muted: oklch(0.96 0 0);
+  --muted-foreground: oklch(0.48 0 0);
+  --border: oklch(0.91 0 0);
+  --ring: oklch(0.55 0.12 255);
+  --primary: oklch(0.25 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --accent: oklch(0.55 0.12 255);
+  --success: oklch(0.55 0.13 150);
+  --warning: oklch(0.7 0.14 75);
+  --danger: oklch(0.55 0.2 27);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.16 0 0);
+    --foreground: oklch(0.95 0 0);
+    --surface: oklch(0.2 0 0);
+    --muted: oklch(0.24 0 0);
+    --muted-foreground: oklch(0.7 0 0);
+    --border: oklch(0.3 0 0);
+    --ring: oklch(0.7 0.12 255);
+    --primary: oklch(0.95 0 0);
+    --primary-foreground: oklch(0.18 0 0);
+    --accent: oklch(0.72 0.12 255);
+    --success: oklch(0.72 0.13 150);
+    --warning: oklch(0.8 0.13 75);
+    --danger: oklch(0.7 0.17 27);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-feature-settings: "tnum" 1;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
