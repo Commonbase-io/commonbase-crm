@@ -63,3 +63,31 @@ test("filters by trigger event", async ({ page }) => {
   const count = await rows.count();
   for (let i = 0; i < count; i++) await expect(rows.nth(i)).toContainText("Lease expiration");
 });
+
+test("suppressions beyond the API's 1,000-row cap still hide prospects", async ({ page }) => {
+  const { withDb } = await import("./db");
+  await signIn(page, "manager@brs-demo.example");
+  await page.goto(SEARCH);
+  const domain = (await results(page).first().locator("td").nth(2).locator("div").nth(1).textContent())!.trim();
+  expect(domain).toMatch(/\.example$/);
+
+  await withDb(async (db) => {
+    await db.query(
+      `insert into suppression_entries (tenant_id, scope, value_hash, reason, source)
+       select 'a0000000-0000-4000-8000-000000000001', 'email', app.suppression_hash('filler' || g || '@bulk.example'), 'e2e filler', 'import'
+       from generate_series(1, 1200) g`,
+    );
+    await db.query(
+      `insert into suppression_entries (tenant_id, scope, value_hash, reason, source)
+       values ('a0000000-0000-4000-8000-000000000001', 'domain', app.suppression_hash($1), 'e2e', 'import')`,
+      [domain],
+    );
+  });
+  try {
+    await page.goto(SEARCH);
+    await expect(results(page).first()).toBeVisible();
+    await expect(page.getByRole("table", { name: "Prospect results" })).not.toContainText(domain);
+  } finally {
+    await withDb((db) => db.query("delete from suppression_entries where source = 'import' and reason like 'e2e%'"));
+  }
+});

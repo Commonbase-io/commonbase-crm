@@ -1,5 +1,6 @@
 import "server-only";
 import type { TenantContext } from "@/server/auth/tenant-context";
+import { fetchAllPages } from "@/server/supabase/paginate";
 import { createUserClient } from "@/server/supabase/server";
 import { computeOverview, type OverviewMetrics } from "./overview-metrics";
 
@@ -26,12 +27,20 @@ export async function loadOverview(ctx: TenantContext, range: RangeValue, campai
   const from = option.days === null ? null : new Date(to.getTime() - option.days * 86_400_000);
 
   const [opps, activities, contacts, campaigns, connection] = await Promise.all([
-    supabase
-      .from("opportunities")
-      .select("stage, estimated_value, source_campaign_id, first_touch_at, qualified_at, quote_requested_at, closed_at")
-      .eq("tenant_id", ctx.tenantId),
-    supabase.from("activities").select("contact_id, campaign_id, event_type, occurred_at").eq("tenant_id", ctx.tenantId),
-    supabase.from("contacts").select("created_at").eq("tenant_id", ctx.tenantId),
+    // Complete reads (paged past the API row cap). Computing in app code is fine
+    // at pilot volumes; see docs/IMPLEMENTATION_PLAN.md for moving to SQL aggregates.
+    fetchAllPages((from, to) =>
+      supabase
+        .from("opportunities")
+        .select("stage, estimated_value, source_campaign_id, first_touch_at, qualified_at, quote_requested_at, closed_at")
+        .eq("tenant_id", ctx.tenantId)
+        .order("id")
+        .range(from, to),
+    ),
+    fetchAllPages((from, to) =>
+      supabase.from("activities").select("contact_id, campaign_id, event_type, occurred_at").eq("tenant_id", ctx.tenantId).order("id").range(from, to),
+    ),
+    fetchAllPages((from, to) => supabase.from("contacts").select("created_at").eq("tenant_id", ctx.tenantId).order("id").range(from, to)),
     supabase.from("campaigns").select("id, name").eq("tenant_id", ctx.tenantId).order("created_at"),
     supabase
       .from("provider_connections")

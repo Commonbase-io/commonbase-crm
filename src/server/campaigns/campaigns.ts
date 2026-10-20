@@ -5,10 +5,12 @@ import { assertCan } from "@/server/auth/roles";
 import { audit, type AuditScope } from "@/server/audit";
 import { syncOptOuts } from "@/server/compliance/opt-out-sync";
 import { redactString } from "@/server/compliance/redact";
+import { loadSuppressionsFor } from "@/server/compliance/suppression-lookup";
 import { checkCampaignCompliance, type ComplianceProblem } from "@/server/compliance/template-check";
 import type { ProviderAdapters } from "@/server/providers/interfaces";
 import { getProviderRegistry } from "@/server/providers/server-registry";
 import { createAdminClient } from "@/server/supabase/admin";
+import { fetchAllPages } from "@/server/supabase/paginate";
 import { createUserClient } from "@/server/supabase/server";
 import { planEnrollment, providerContactId, type EnrollmentCandidate, type ExistingStatus } from "./enrollment-plan";
 import { runIdempotent } from "./idempotency";
@@ -71,7 +73,9 @@ export async function listCampaigns(ctx: TenantContext): Promise<CampaignSummary
       .select("id, name, status, approved_at, updated_at, mailbox:mailboxes!campaigns_tenant_id_provider_connection_id_mailbox_id_fkey(email)")
       .eq("tenant_id", ctx.tenantId)
       .order("updated_at", { ascending: false }),
-    supabase.from("campaign_contacts").select("campaign_id").eq("tenant_id", ctx.tenantId).eq("enrollment_status", "enrolled"),
+    fetchAllPages((from, to) =>
+      supabase.from("campaign_contacts").select("campaign_id").eq("tenant_id", ctx.tenantId).eq("enrollment_status", "enrolled").order("campaign_id").order("contact_id").range(from, to),
+    ),
   ]);
   if (campaigns.error || enrollments.error) throw new Error("Failed to load campaigns");
   const counts = new Map<string, number>();
@@ -139,12 +143,16 @@ export async function loadCampaign(ctx: TenantContext, campaignId: string) {
       .eq("tenant_id", ctx.tenantId)
       .eq("provider_connection_id", campaign.provider_connection_id)
       .order("email"),
-    supabase
-      .from("campaign_contacts")
-      .select("contact_id, enrollment_status, enrolled_at, last_error, contact:contacts!campaign_contacts_tenant_id_contact_id_fkey(name, title, email)")
-      .eq("tenant_id", ctx.tenantId)
-      .eq("campaign_id", campaignId)
-      .order("created_at"),
+    fetchAllPages((from, to) =>
+      supabase
+        .from("campaign_contacts")
+        .select("contact_id, enrollment_status, enrolled_at, last_error, contact:contacts!campaign_contacts_tenant_id_contact_id_fkey(name, title, email)")
+        .eq("tenant_id", ctx.tenantId)
+        .eq("campaign_id", campaignId)
+        .order("created_at")
+        .order("contact_id")
+        .range(from, to),
+    ),
     campaign.approved_by
       ? supabase.from("profiles").select("display_name").eq("id", campaign.approved_by).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -192,7 +200,9 @@ export async function loadEnrollableContacts(ctx: TenantContext, campaignId: str
       .not("email", "is", null)
       .order("name")
       .limit(500),
-    supabase.from("campaign_contacts").select("contact_id, enrollment_status").eq("tenant_id", ctx.tenantId).eq("campaign_id", campaignId),
+    fetchAllPages((from, to) =>
+      supabase.from("campaign_contacts").select("contact_id, enrollment_status").eq("tenant_id", ctx.tenantId).eq("campaign_id", campaignId).order("contact_id").range(from, to),
+    ),
   ]);
   if (contacts.error || existing.error) throw new Error("Failed to load contacts");
   const taken = new Set(existing.data.filter((e) => e.enrollment_status !== "failed").map((e) => e.contact_id));
@@ -445,30 +455,25 @@ export async function completeCampaign(ctx: TenantContext, campaignId: string) {
 // Enrollment
 // ---------------------------------------------------------------------------
 
-async function loadSuppressionSet(ctx: Scope) {
-  const { data, error } = await createAdminClient().from("suppression_entries").select("scope, value_hash").eq("tenant_id", ctx.tenantId);
-  if (error) throw new Error("Failed to load suppressions");
-  return {
-    emails: new Set(data.filter((s) => s.scope === "email").map((s) => s.value_hash)),
-    domains: new Set(data.filter((s) => s.scope === "domain").map((s) => s.value_hash)),
-  };
-}
-
 /** After an opt-out sync, flag enrolled contacts who are now suppressed (shown in the UI). */
 async function markNewlySuppressed(ctx: Scope, campaignId: string) {
   const db = createAdminClient();
-  const { data, error } = await db
-    .from("campaign_contacts")
-    .select("contact_id, contact:contacts!campaign_contacts_tenant_id_contact_id_fkey(email, external_ref)")
-    .eq("tenant_id", ctx.tenantId)
-    .eq("campaign_id", campaignId)
-    .in("enrollment_status", ["enrolled", "enrolling", "pending"]);
+  const { data, error } = await fetchAllPages((from, to) =>
+    db
+      .from("campaign_contacts")
+      .select("contact_id, contact:contacts!campaign_contacts_tenant_id_contact_id_fkey(email, external_ref)")
+      .eq("tenant_id", ctx.tenantId)
+      .eq("campaign_id", campaignId)
+      .in("enrollment_status", ["enrolled", "enrolling", "pending"])
+      .order("contact_id")
+      .range(from, to),
+  );
   if (error) throw new Error("Failed to load enrollments");
-  const suppressions = await loadSuppressionSet(ctx);
   const candidates = data.map((row) => {
     const contact = Array.isArray(row.contact) ? row.contact[0] : row.contact;
     return { contactId: row.contact_id, email: contact?.email ?? null, externalRef: contact?.external_ref ?? null };
   });
+  const suppressions = await loadSuppressionsFor(db, ctx.tenantId, { emails: candidates.map((c) => c.email) });
   const { suppressed, noEmail } = planEnrollment(candidates, suppressions, new Map());
   const ids = [...suppressed, ...noEmail].map((c) => c.contactId);
   if (ids.length) {
@@ -528,13 +533,20 @@ async function doEnroll(ctx: TenantContext, campaignId: string, contactIds: stri
   const adapters = await adaptersFor(ctx, campaign.provider_connection_id);
   const { added: optOutsSynced } = await syncOptOuts(ctx.tenantId, adapters);
 
-  const [contacts, existing, mailbox, suppressions] = await Promise.all([
+  // Only the selected contacts (≤200): whole-table reads are capped by max_rows
+  // and would silently miss existing enrollments or suppressions.
+  const [contacts, existing, mailbox] = await Promise.all([
     supabase.from("contacts").select("id, email, external_ref").eq("tenant_id", ctx.tenantId).in("id", contactIds),
-    db.from("campaign_contacts").select("contact_id, enrollment_status").eq("tenant_id", ctx.tenantId).eq("campaign_id", campaignId),
+    db
+      .from("campaign_contacts")
+      .select("contact_id, enrollment_status")
+      .eq("tenant_id", ctx.tenantId)
+      .eq("campaign_id", campaignId)
+      .in("contact_id", contactIds),
     supabase.from("mailboxes").select("external_id").eq("tenant_id", ctx.tenantId).eq("id", campaign.mailbox_id).single(),
-    loadSuppressionSet(ctx),
   ]);
   if (contacts.error || existing.error || mailbox.error) throw new Error("Failed to load enrollment data");
+  const suppressions = await loadSuppressionsFor(db, ctx.tenantId, { emails: contacts.data.map((c) => c.email) });
 
   const candidates: EnrollmentCandidate[] = contacts.data.map((c) => ({ contactId: c.id, email: c.email, externalRef: c.external_ref }));
   const plan = planEnrollment(
@@ -687,14 +699,18 @@ export async function reconcileEnrollments(
   await syncOptOuts(ctx.tenantId, adapters);
   await markNewlySuppressed(ctx, campaignId);
 
-  let query = db
-    .from("campaign_contacts")
-    .select("contact_id, contact:contacts!campaign_contacts_tenant_id_contact_id_fkey(email, external_ref)")
-    .eq("tenant_id", ctx.tenantId)
-    .eq("campaign_id", campaignId)
-    .eq("enrollment_status", "enrolling");
-  if (options.staleBefore) query = query.lt("updated_at", options.staleBefore.toISOString());
-  const { data, error } = await query;
+  const staleBefore = (options.staleBefore ?? new Date(8.64e15)).toISOString();
+  const { data, error } = await fetchAllPages((from, to) =>
+    db
+      .from("campaign_contacts")
+      .select("contact_id, contact:contacts!campaign_contacts_tenant_id_contact_id_fkey(email, external_ref)")
+      .eq("tenant_id", ctx.tenantId)
+      .eq("campaign_id", campaignId)
+      .eq("enrollment_status", "enrolling")
+      .lt("updated_at", staleBefore)
+      .order("contact_id")
+      .range(from, to),
+  );
   if (error) throw new Error("Failed to load pending enrollments");
   const pending: EnrollmentCandidate[] = data.map((row) => {
     const contact = Array.isArray(row.contact) ? row.contact[0] : row.contact;

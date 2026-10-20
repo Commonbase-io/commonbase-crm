@@ -4,6 +4,7 @@ import { syncOptOuts } from "@/server/compliance/opt-out-sync";
 import { syncEmailActivity } from "@/server/crm/activity-sync";
 import { getProviderRegistry } from "@/server/providers/server-registry";
 import { createAdminClient } from "@/server/supabase/admin";
+import { fetchAllPages } from "@/server/supabase/paginate";
 import type { JobHandler } from "./runner";
 
 export const JOB_TYPES = {
@@ -27,12 +28,18 @@ export const JOB_HANDLERS: Readonly<Record<string, JobHandler>> = {
 
   [JOB_TYPES.reconcileEnrollments]: async (job) => {
     const staleBefore = new Date(Date.now() - STALE_ENROLLMENT_MS);
-    const { data, error } = await createAdminClient()
-      .from("campaign_contacts")
-      .select("campaign_id")
-      .eq("tenant_id", job.tenantId)
-      .eq("enrollment_status", "enrolling")
-      .lt("updated_at", staleBefore.toISOString());
+    const db = createAdminClient();
+    const { data, error } = await fetchAllPages((from, to) =>
+      db
+        .from("campaign_contacts")
+        .select("campaign_id")
+        .eq("tenant_id", job.tenantId)
+        .eq("enrollment_status", "enrolling")
+        .lt("updated_at", staleBefore.toISOString())
+        .order("campaign_id")
+        .order("contact_id")
+        .range(from, to),
+    );
     if (error) throw new Error("Failed to find pending enrollments");
     const campaignIds = [...new Set(data.map((r) => r.campaign_id))];
     for (const campaignId of campaignIds) {

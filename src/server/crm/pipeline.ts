@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { TenantContext } from "@/server/auth/tenant-context";
 import { assertCan, can, ForbiddenError } from "@/server/auth/roles";
 import { audit } from "@/server/audit";
+import { fetchAllPages } from "@/server/supabase/paginate";
 import { createUserClient } from "@/server/supabase/server";
 import { loadTeam, type TeamMember } from "@/server/tenants/team";
 import { OPPORTUNITY_STAGES, type OpportunityStage } from "./stages";
@@ -79,9 +80,12 @@ function toCard(row: Record<string, unknown>, team: Map<string, TeamMember>, ctx
 export async function loadPipeline(ctx: TenantContext, filter: { owner: "all" | "me" }) {
   assertCan(ctx.role, "crm.read");
   const supabase = await createUserClient();
-  let query = supabase.from("opportunities").select(OPPORTUNITY_SELECT).eq("tenant_id", ctx.tenantId).order("updated_at", { ascending: false });
-  if (filter.owner === "me") query = query.eq("owner_id", ctx.userId);
-  const [{ data, error }, members] = await Promise.all([query, loadTeam(ctx)]);
+  const page = (from: number, to: number) => {
+    let query = supabase.from("opportunities").select(OPPORTUNITY_SELECT).eq("tenant_id", ctx.tenantId);
+    if (filter.owner === "me") query = query.eq("owner_id", ctx.userId);
+    return query.order("updated_at", { ascending: false }).order("id").range(from, to);
+  };
+  const [{ data, error }, members] = await Promise.all([fetchAllPages(page), loadTeam(ctx)]);
   if (error) throw new Error("Failed to load pipeline");
   const team = new Map(members.map((m) => [m.userId, m]));
   return { opportunities: data.map((row) => toCard(row, team, ctx)), team: members };

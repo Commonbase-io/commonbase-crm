@@ -3,6 +3,7 @@ import type { TenantContext } from "@/server/auth/tenant-context";
 import { assertCan } from "@/server/auth/roles";
 import { audit } from "@/server/audit";
 import { isSuppressed, normalizeDomain, normalizeEmail } from "@/server/compliance/suppression";
+import { loadSuppressionsFor } from "@/server/compliance/suppression-lookup";
 import type { ProspectPerson, ProviderAdapters } from "@/server/providers/interfaces";
 import { getProviderRegistry } from "@/server/providers/server-registry";
 import { createUserClient } from "@/server/supabase/server";
@@ -23,15 +24,6 @@ export async function loadTenantConfig(ctx: TenantContext, supabase?: UserClient
   return parseTenantConfig(data.config);
 }
 
-async function loadSuppressions(supabase: UserClient, tenantId: string) {
-  const { data, error } = await supabase.from("suppression_entries").select("scope, value_hash").eq("tenant_id", tenantId);
-  if (error) throw new Error("Failed to load suppressions");
-  return {
-    emails: new Set(data.filter((s) => s.scope === "email").map((s) => s.value_hash)),
-    domains: new Set(data.filter((s) => s.scope === "domain").map((s) => s.value_hash)),
-  };
-}
-
 async function buildReviewContext(supabase: UserClient, ctx: TenantContext, people: ProspectPerson[], config: TenantConfig) {
   const domains = [...new Set(people.flatMap((p) => (p.company.domain ? [normalizeDomain(p.company.domain)] : [])))];
   const refs = people.map((p) => p.externalId);
@@ -42,7 +34,7 @@ async function buildReviewContext(supabase: UserClient, ctx: TenantContext, peop
     refs.length
       ? supabase.from("contacts").select("external_ref").eq("tenant_id", ctx.tenantId).in("external_ref", refs)
       : Promise.resolve({ data: [], error: null }),
-    loadSuppressions(supabase, ctx.tenantId),
+    loadSuppressionsFor(supabase, ctx.tenantId, { domains }),
   ]);
   if (companies.error || contacts.error) throw new Error("Failed to load existing records");
   return {
@@ -164,7 +156,6 @@ export async function saveProspects(
   const wanted = new Set(input.personIds);
   const selected = result.people.filter((p) => wanted.has(p.externalId));
   const review = reviewProspects(selected, await buildReviewContext(supabase, ctx, selected, config));
-  const suppressions = await loadSuppressions(supabase, ctx.tenantId);
 
   const summary: SaveSummary = {
     companiesCreated: 0,
@@ -185,6 +176,7 @@ export async function saveProspects(
     let emailStatus: "unverified" | "verified" | "invalid" = "unverified";
     if (input.enrich) {
       const enriched = await adapters.prospecting.enrichPerson(person.externalId);
+      const suppressions = await loadSuppressionsFor(supabase, ctx.tenantId, { emails: [enriched.email] });
       if (enriched.email && isSuppressed(enriched.email, suppressions)) {
         summary.skippedSuppressed++;
         continue;
