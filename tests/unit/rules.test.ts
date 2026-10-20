@@ -4,7 +4,7 @@ import { moveDealOptimistic, reconcileDeal, type BoardDeal, type BoardStage } fr
 import { neutralizeCsvCell, parseCsv, serializeCsv } from "@/lib/csv";
 import { dollarsToCents } from "@/lib/money";
 import { passwordRuleError } from "@/lib/auth/password-rule";
-import { companySchema, dealSchema, fieldErrorsFromZod } from "@/lib/validation";
+import { companySchema, contactSchema, dealSchema, fieldErrorsFromZod } from "@/lib/validation";
 
 describe("password rule", () => {
   it("requires 8 characters, a letter, and a digit", () => {
@@ -50,7 +50,13 @@ describe("csv", () => {
 
 describe("currency", () => {
   it("accepts ISO codes and rejects made-up ones", () => {
-    const base = { name: "Retainer", amount: "10.00", stageId: "11111111-1111-4111-8111-111111111111" };
+    const base = {
+      name: "Retainer",
+      amount: "10.00",
+      stageId: "11111111-1111-4111-8111-111111111111",
+      companyId: "22222222-2222-4222-8222-222222222222",
+      contactIds: ["33333333-3333-4333-8333-333333333333"],
+    };
     expect(dealSchema.safeParse({ ...base, currency: "usd" }).success).toBe(true);
     expect(dealSchema.safeParse({ ...base, currency: "EUR" }).success).toBe(true);
     const rejected = dealSchema.safeParse({ ...base, currency: "ABC" });
@@ -65,6 +71,42 @@ describe("validation messages", () => {
     if (!parsed.success) {
       expect(fieldErrorsFromZod(parsed.error).name).toBe("Name is required");
     }
+  });
+});
+
+describe("hierarchy validation", () => {
+  const stageId = "11111111-1111-4111-8111-111111111111";
+  const companyId = "22222222-2222-4222-8222-222222222222";
+  const contactId = "33333333-3333-4333-8333-333333333333";
+
+  it("requires a company on a contact and a company plus a contact on a deal", () => {
+    const contact = contactSchema.safeParse({ firstName: "Pat", lastName: "Example", companyId: "" });
+    expect(contact.success).toBe(false);
+    if (!contact.success) expect(fieldErrorsFromZod(contact.error).companyId).toMatch(/company/i);
+
+    const deal = dealSchema.safeParse({
+      name: "Retainer",
+      amount: "10.00",
+      stageId,
+      companyId: "",
+      contactIds: [],
+    });
+    expect(deal.success).toBe(false);
+    if (!deal.success) {
+      const errors = fieldErrorsFromZod(deal.error);
+      expect(errors.companyId).toMatch(/company/i);
+      expect(errors.contactIds).toMatch(/contact/i);
+      expect(Object.values(errors).join(" ")).not.toMatch(/Validation failed/);
+    }
+
+    const ok = dealSchema.safeParse({
+      name: "Retainer",
+      amount: "10.00",
+      stageId,
+      companyId,
+      contactIds: [contactId],
+    });
+    expect(ok.success).toBe(true);
   });
 });
 

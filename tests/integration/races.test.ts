@@ -123,14 +123,32 @@ describe("concurrent writes", () => {
   it("tells the board when deals were left off", async () => {
     const { org, user } = await makeOrg({ name: "Board", slug: "board", email: "a@example.com" });
     const stage = await admin.stage.findFirstOrThrow({ where: { orgId: org.id, name: "Lead" } });
-    await admin.deal.createMany({
-      data: Array.from({ length: 501 }, (_, index) => ({
-        orgId: org.id,
-        name: `Deal ${index}`,
-        amountCents: 100,
-        stageId: stage.id,
-        ownerId: user.id,
-      })),
+    await admin.$transaction(async (tx) => {
+      const company = await tx.company.create({
+        data: { orgId: org.id, name: "Board Co", ownerId: user.id },
+      });
+      const contact = await tx.contact.create({
+        data: { orgId: org.id, firstName: "Pat", lastName: "Board", companyId: company.id, ownerId: user.id },
+      });
+      await tx.deal.createMany({
+        data: Array.from({ length: 501 }, (_, index) => ({
+          orgId: org.id,
+          name: `Deal ${index}`,
+          amountCents: 100,
+          stageId: stage.id,
+          companyId: company.id,
+          ownerId: user.id,
+        })),
+      });
+      const deals = await tx.deal.findMany({ where: { orgId: org.id }, select: { id: true } });
+      await tx.dealContact.createMany({
+        data: deals.map((deal) => ({
+          orgId: org.id,
+          dealId: deal.id,
+          contactId: contact.id,
+          companyId: company.id,
+        })),
+      });
     });
     const board = await getBoard({
       id: user.id,

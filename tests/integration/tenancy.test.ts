@@ -34,10 +34,23 @@ describe("tenant isolation", () => {
       data: { orgId: b.org.id, name: secret, domain: "secret.example", ownerId: b.user.id, notes: "private note" },
     });
     const bContact = await admin.contact.create({
-      data: { orgId: b.org.id, firstName: "Secret", lastName: "Person", email: "secret@example.com", ownerId: b.user.id },
+      data: {
+        orgId: b.org.id,
+        firstName: "Secret",
+        lastName: "Person",
+        email: "secret@example.com",
+        companyId: bCompany.id,
+        ownerId: b.user.id,
+      },
     });
-    const bDeal = await admin.deal.create({
-      data: { orgId: b.org.id, name: secret, amountCents: 100, stageId: bStage.id, companyId: bCompany.id, ownerId: b.user.id },
+    const bDeal = await admin.$transaction(async (tx) => {
+      const created = await tx.deal.create({
+        data: { orgId: b.org.id, name: secret, amountCents: 100, stageId: bStage.id, companyId: bCompany.id, ownerId: b.user.id },
+      });
+      await tx.dealContact.create({
+        data: { orgId: b.org.id, dealId: created.id, contactId: bContact.id, companyId: bCompany.id },
+      });
+      return created;
     });
     const bNote = await admin.note.create({
       data: { orgId: b.org.id, body: secret, authorId: b.user.id, dealId: bDeal.id },
@@ -67,7 +80,11 @@ describe("tenant isolation", () => {
           method: "PATCH",
           cookie,
           params: { id: bContact.id },
-          body: JSON.stringify({ firstName: "Hacked", lastName: "Person" }),
+          body: JSON.stringify({
+            firstName: "Hacked",
+            lastName: "Person",
+            companyId: "11111111-1111-4111-8111-111111111111",
+          }),
         })
       ).status,
     ).toBe(404);
@@ -81,7 +98,12 @@ describe("tenant isolation", () => {
           method: "PATCH",
           cookie,
           params: { id: bDeal.id },
-          body: JSON.stringify({ name: "Hacked", amount: "10" }),
+          body: JSON.stringify({
+            name: "Hacked",
+            amount: "10",
+            companyId: "11111111-1111-4111-8111-111111111111",
+            contactIds: ["22222222-2222-4222-8222-222222222222"],
+          }),
         })
       ).status,
     ).toBe(404);

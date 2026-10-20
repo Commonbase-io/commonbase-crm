@@ -62,6 +62,10 @@ const optionalUuid = z
   .transform((value) => (value ? value : null))
   .refine((value) => value === null || z.string().uuid().safeParse(value).success, "Choose a valid record");
 
+function requiredId(message: string) {
+  return z.string({ required_error: message, invalid_type_error: message }).trim().min(1, message).uuid(message);
+}
+
 const optionalOwner = z
   .string()
   .trim()
@@ -83,16 +87,46 @@ export const companySchema = z.object({
   ownerId: optionalOwner,
 });
 
-export const contactSchema = z.object({
+const contactPersonSchema = z.object({
   firstName: z.string().trim().min(1, "First name is required").max(100),
   lastName: z.string().trim().min(1, "Last name is required").max(100),
   email: optionalEmail,
   phone: optionalTrimmed(40),
   title: optionalTrimmed(120),
-  companyId: optionalUuid,
   notes: optionalTrimmed(5000),
   ownerId: optionalOwner,
 });
+
+export const contactSchema = contactPersonSchema.extend({
+  companyId: requiredId("Choose a company"),
+});
+
+export const contactCreateSchema = contactPersonSchema
+  .extend({
+    companyId: z
+      .string()
+      .trim()
+      .optional()
+      .transform((value) => (value ? value : undefined)),
+    company: companySchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.companyId && value.company) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["companyId"],
+        message: "Choose an existing company or create a new one",
+      });
+      return;
+    }
+    if (!value.companyId && !value.company) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["companyId"], message: "Choose a company" });
+      return;
+    }
+    if (value.companyId && !z.string().uuid().safeParse(value.companyId).success) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["companyId"], message: "Choose a company" });
+    }
+  });
 
 const CURRENCIES = new Set(Intl.supportedValuesOf("currency"));
 
@@ -118,13 +152,31 @@ export const dealSchema = z.object({
     .transform((value) => (value ? value.toUpperCase() : "USD"))
     .refine((value) => CURRENCIES.has(value), "Use a real currency code"),
   stageId: z.string().uuid("Choose a stage"),
-  companyId: optionalUuid,
+  companyId: requiredId("Choose a company"),
   ownerId: optionalOwner,
   expectedCloseDate: closeDate,
-  contactIds: z.array(z.string().uuid()).max(50).optional().transform((value) => value ?? []),
+  contactIds: z.preprocess(
+    (value) => (value == null ? [] : value),
+    z
+      .array(z.string().uuid("Choose a valid contact"))
+      .min(1, "Choose at least one contact at this company")
+      .max(50, "A deal can include at most 50 contacts"),
+  ),
 });
 
 export const dealUpdateSchema = dealSchema.omit({ stageId: true });
+
+export const dealWizardSchema = z.object({
+  company: z.discriminatedUnion("mode", [
+    z.object({ mode: z.literal("existing"), id: z.string().uuid("Choose a company") }),
+    companySchema.extend({ mode: z.literal("create") }),
+  ]),
+  contact: z.discriminatedUnion("mode", [
+    z.object({ mode: z.literal("existing"), id: z.string().uuid("Choose a contact") }),
+    contactPersonSchema.extend({ mode: z.literal("create") }),
+  ]),
+  deal: dealSchema.omit({ companyId: true, contactIds: true }),
+});
 
 export const noteSchema = z
   .object({
@@ -233,8 +285,10 @@ export const listQuerySchema = z.object({
 
 export type CompanyInput = z.infer<typeof companySchema>;
 export type ContactInput = z.infer<typeof contactSchema>;
+export type ContactCreateInput = z.infer<typeof contactCreateSchema>;
 export type DealInput = z.infer<typeof dealSchema>;
 export type DealUpdateInput = z.infer<typeof dealUpdateSchema>;
+export type DealWizardInput = z.infer<typeof dealWizardSchema>;
 export type NoteInput = z.infer<typeof noteSchema>;
 export type ListQuery = z.infer<typeof listQuerySchema>;
 export type UserCreateInput = z.infer<typeof userCreateSchema>;

@@ -1,10 +1,12 @@
 import { outcomeToStatus, type BoardDeal, type BoardStage } from "@/lib/crm/board";
 import { writeAudit } from "@/lib/crm/audit";
+import { createCompanyTx } from "@/lib/crm/companies";
+import { createContactTx } from "@/lib/crm/contacts";
 import type { SessionUser } from "@/lib/auth/session";
-import { isPrismaNotFound, withOrg, type Tx } from "@/lib/db";
+import { errorText, isPrismaNotFound, isUniqueViolation, withOrg, type Tx } from "@/lib/db";
 import { ConflictError, HttpError, NotFoundError } from "@/lib/errors";
 import { dollarsToCents } from "@/lib/money";
-import type { DealInput, DealUpdateInput, ListQuery } from "@/lib/validation";
+import type { DealInput, DealUpdateInput, DealWizardInput, ListQuery } from "@/lib/validation";
 
 function closeDate(value: string | null): Date | null {
   if (!value) return null;
@@ -24,7 +26,7 @@ function serializeBoardDeal(deal: {
   currency: string;
   status: "OPEN" | "WON" | "LOST";
   expectedCloseDate: Date | null;
-  company: { name: string } | null;
+  company: { name: string };
   owner: { name: string };
 }): BoardDeal {
   return {
@@ -34,7 +36,7 @@ function serializeBoardDeal(deal: {
     amountCents: deal.amountCents,
     currency: deal.currency,
     status: deal.status,
-    companyName: deal.company?.name ?? null,
+    companyName: deal.company.name,
     ownerName: deal.owner.name,
     expectedCloseDate: formatClose(deal.expectedCloseDate),
   };
@@ -47,23 +49,45 @@ async function resolveOwner(tx: Tx, session: SessionUser, ownerId?: string) {
   return owner.id;
 }
 
-async function assertContacts(tx: Tx, contactIds: string[]) {
-  if (contactIds.length === 0) return;
-  const found = await tx.contact.findMany({
-    where: { id: { in: contactIds }, archivedAt: null },
+async function requireCompany(tx: Tx, companyId: string) {
+  const company = await tx.company.findFirst({
+    where: { id: companyId, archivedAt: null },
     select: { id: true },
   });
-  if (found.length !== new Set(contactIds).size) throw new NotFoundError();
+  if (!company) throw new NotFoundError();
+  return company.id;
 }
 
-async function replaceContacts(tx: Tx, orgId: string, dealId: string, contactIds: string[]) {
-  await assertContacts(tx, contactIds);
-  await tx.dealContact.deleteMany({ where: { dealId } });
-  if (contactIds.length) {
-    await tx.dealContact.createMany({
-      data: [...new Set(contactIds)].map((contactId) => ({ orgId, dealId, contactId })),
+async function loadDealContacts(tx: Tx, companyId: string, contactIds: string[]) {
+  const unique = [...new Set(contactIds)];
+  if (unique.length === 0) {
+    throw new HttpError(400, "Choose at least one contact at this company", {
+      contactIds: "Choose at least one contact at this company",
     });
   }
+  const found = await tx.contact.findMany({
+    where: { id: { in: unique } },
+    select: { id: true, companyId: true, archivedAt: true },
+  });
+  if (found.length !== unique.length) throw new NotFoundError();
+  if (found.some((contact) => contact.archivedAt)) {
+    throw new HttpError(400, "Choose active contacts at this company", {
+      contactIds: "Choose active contacts at this company",
+    });
+  }
+  if (found.some((contact) => contact.companyId !== companyId)) {
+    throw new HttpError(400, "Every contact must belong to the deal's company", {
+      contactIds: "Every contact must belong to the deal's company",
+    });
+  }
+  return unique;
+}
+
+async function writeDealContacts(tx: Tx, orgId: string, dealId: string, companyId: string, contactIds: string[]) {
+  await tx.dealContact.deleteMany({ where: { dealId } });
+  await tx.dealContact.createMany({
+    data: contactIds.map((contactId) => ({ orgId, dealId, contactId, companyId })),
+  });
 }
 
 const dealListSelect = {
@@ -148,10 +172,8 @@ export async function createDeal(session: SessionUser, input: DealInput) {
   return withOrg(session.orgId, session.id, async (tx) => {
     const stage = await tx.stage.findFirst({ where: { id: input.stageId, archivedAt: null } });
     if (!stage) throw new NotFoundError();
-    if (input.companyId) {
-      const company = await tx.company.findFirst({ where: { id: input.companyId, archivedAt: null }, select: { id: true } });
-      if (!company) throw new NotFoundError();
-    }
+    const companyId = await requireCompany(tx, input.companyId);
+    const contactIds = await loadDealContacts(tx, companyId, input.contactIds);
     const ownerId = await resolveOwner(tx, session, input.ownerId);
     const deal = await tx.deal.create({
       data: {
@@ -160,14 +182,14 @@ export async function createDeal(session: SessionUser, input: DealInput) {
         amountCents,
         currency: input.currency,
         stageId: stage.id,
-        companyId: input.companyId,
+        companyId,
         ownerId,
         expectedCloseDate: closeDate(input.expectedCloseDate),
         status: outcomeToStatus(stage.outcome),
       },
       select: { id: true },
     });
-    await replaceContacts(tx, session.orgId, deal.id, input.contactIds);
+    await writeDealContacts(tx, session.orgId, deal.id, companyId, contactIds);
     await writeAudit(tx, {
       orgId: session.orgId,
       actorId: session.id,
@@ -189,6 +211,90 @@ async function getDealInTx(tx: Tx, id: string) {
   return { ...deal, expectedCloseDate: formatClose(deal.expectedCloseDate) };
 }
 
+async function requireWizardContact(tx: Tx, contactId: string, companyId: string) {
+  const contact = await tx.contact.findFirst({
+    where: { id: contactId, archivedAt: null },
+    select: { id: true, companyId: true },
+  });
+  if (!contact) throw new NotFoundError();
+  if (contact.companyId !== companyId) {
+    throw new HttpError(400, "Choose a contact at this company", {
+      contactId: "Choose a contact at this company",
+    });
+  }
+  return contact;
+}
+
+export async function createDealWizard(session: SessionUser, input: DealWizardInput) {
+  try {
+    return await withOrg(session.orgId, session.id, async (tx) => {
+      const company =
+        input.company.mode === "existing"
+          ? { id: await requireCompany(tx, input.company.id) }
+          : await createCompanyTx(tx, session, input.company);
+      const contact =
+        input.contact.mode === "existing"
+          ? await requireWizardContact(tx, input.contact.id, company.id)
+          : await createContactTx(tx, session, {
+              firstName: input.contact.firstName,
+              lastName: input.contact.lastName,
+              email: input.contact.email,
+              phone: input.contact.phone,
+              title: input.contact.title,
+              notes: input.contact.notes,
+              ownerId: input.contact.ownerId,
+              companyId: company.id,
+            });
+      const amountCents = dollarsToCents(input.deal.amount);
+      if (amountCents === null) {
+        throw new HttpError(400, "Enter a dollar amount", {
+          amount: "Enter a dollar amount with up to 2 decimal places",
+        });
+      }
+      const stage = await tx.stage.findFirst({ where: { id: input.deal.stageId, archivedAt: null } });
+      if (!stage) throw new NotFoundError();
+      const ownerId = await resolveOwner(tx, session, input.deal.ownerId);
+      const deal = await tx.deal.create({
+        data: {
+          orgId: session.orgId,
+          name: input.deal.name,
+          amountCents,
+          currency: input.deal.currency,
+          stageId: stage.id,
+          companyId: company.id,
+          ownerId,
+          expectedCloseDate: closeDate(input.deal.expectedCloseDate),
+          status: outcomeToStatus(stage.outcome),
+        },
+        select: { id: true },
+      });
+      await writeDealContacts(tx, session.orgId, deal.id, company.id, [contact.id]);
+      await writeAudit(tx, {
+        orgId: session.orgId,
+        actorId: session.id,
+        action: "CREATE",
+        entityType: "deal",
+        entityId: deal.id,
+        metadata: { name: input.deal.name, stageId: stage.id, wizard: true },
+      });
+      return { id: deal.id, companyId: company.id, contactId: contact.id };
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      const text = errorText(error).toLowerCase();
+      if (text.includes("domain")) {
+        throw new HttpError(400, "A company with this domain already exists", {
+          domain: "A company with this domain already exists",
+        });
+      }
+      throw new HttpError(400, "A contact with this email already exists", {
+        email: "A contact with this email already exists",
+      });
+    }
+    throw error;
+  }
+}
+
 export async function updateDeal(session: SessionUser, id: string, input: DealUpdateInput) {
   const amountCents = dollarsToCents(input.amount);
   if (amountCents === null) {
@@ -197,28 +303,27 @@ export async function updateDeal(session: SessionUser, id: string, input: DealUp
   return withOrg(session.orgId, session.id, async (tx) => {
     const current = await tx.deal.findFirst({ where: { id, archivedAt: null }, select: { id: true } });
     if (!current) throw new NotFoundError();
-    if (input.companyId) {
-      const company = await tx.company.findFirst({ where: { id: input.companyId, archivedAt: null }, select: { id: true } });
-      if (!company) throw new NotFoundError();
-    }
+    const companyId = await requireCompany(tx, input.companyId);
+    const contactIds = await loadDealContacts(tx, companyId, input.contactIds);
     const ownerId = await resolveOwner(tx, session, input.ownerId);
     try {
+      await tx.dealContact.deleteMany({ where: { dealId: id } });
       await tx.deal.update({
         where: { id },
         data: {
           name: input.name,
           amountCents,
           currency: input.currency,
-          companyId: input.companyId,
+          companyId,
           ownerId,
           expectedCloseDate: closeDate(input.expectedCloseDate),
         },
       });
+      await writeDealContacts(tx, session.orgId, id, companyId, contactIds);
     } catch (error) {
       if (isPrismaNotFound(error)) throw new NotFoundError();
       throw error;
     }
-    await replaceContacts(tx, session.orgId, id, input.contactIds);
     await writeAudit(tx, {
       orgId: session.orgId,
       actorId: session.id,

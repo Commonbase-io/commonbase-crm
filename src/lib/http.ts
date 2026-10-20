@@ -10,5 +10,7 @@ export function notFound(): Response {
 }
 
 export function validationFailed(error: ZodError): Response {
-  return json({ error: "Validation failed", fieldErrors: fieldErrorsFromZod(error) }, 400);
+  const fieldErrors = fieldErrorsFromZod(error);
+  const message = Object.values(fieldErrors)[0] ?? "Check the highlighted fields";
+  return json({ error: message, fieldErrors }, 400);
 }

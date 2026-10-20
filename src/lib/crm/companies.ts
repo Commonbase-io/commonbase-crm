@@ -114,7 +114,7 @@ export async function getCompany(session: SessionUser, id: string) {
 
 export async function createCompany(session: SessionUser, input: CompanyInput) {
   try {
-    return await createCompanyInOrg(session, input);
+    return await withOrg(session.orgId, session.id, (tx) => createCompanyTx(tx, session, input));
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new HttpError(400, "A company with this domain already exists", {
@@ -125,37 +125,35 @@ export async function createCompany(session: SessionUser, input: CompanyInput) {
   }
 }
 
-async function createCompanyInOrg(session: SessionUser, input: CompanyInput) {
-  return withOrg(session.orgId, session.id, async (tx) => {
-    const owner = await resolveOwner(tx, session, input.ownerId);
-    await assertDomainAvailable(tx, input.domain);
-    const company = await tx.company.create({
-      data: {
-        orgId: session.orgId,
-        name: input.name,
-        domain: input.domain,
-        phone: input.phone,
-        addressLine1: input.addressLine1,
-        addressLine2: input.addressLine2,
-        city: input.city,
-        region: input.region,
-        postalCode: input.postalCode,
-        country: input.country,
-        notes: input.notes,
-        ownerId: owner.id,
-      },
-      select: companySelect,
-    });
-    await writeAudit(tx, {
+export async function createCompanyTx(tx: Tx, session: SessionUser, input: CompanyInput) {
+  const owner = await resolveOwner(tx, session, input.ownerId);
+  await assertDomainAvailable(tx, input.domain);
+  const company = await tx.company.create({
+    data: {
       orgId: session.orgId,
-      actorId: session.id,
-      action: "CREATE",
-      entityType: "company",
-      entityId: company.id,
-      metadata: { name: company.name },
-    });
-    return company;
+      name: input.name,
+      domain: input.domain,
+      phone: input.phone,
+      addressLine1: input.addressLine1,
+      addressLine2: input.addressLine2,
+      city: input.city,
+      region: input.region,
+      postalCode: input.postalCode,
+      country: input.country,
+      notes: input.notes,
+      ownerId: owner.id,
+    },
+    select: companySelect,
   });
+  await writeAudit(tx, {
+    orgId: session.orgId,
+    actorId: session.id,
+    action: "CREATE",
+    entityType: "company",
+    entityId: company.id,
+    metadata: { name: company.name },
+  });
+  return company;
 }
 
 export async function updateCompany(session: SessionUser, id: string, input: CompanyInput) {
@@ -215,6 +213,15 @@ export async function archiveCompany(session: SessionUser, id: string) {
   return withOrg(session.orgId, session.id, async (tx) => {
     const current = await tx.company.findFirst({ where: { id, archivedAt: null }, select: { id: true } });
     if (!current) throw new NotFoundError();
+    const [contacts, deals] = await Promise.all([
+      tx.contact.count({ where: { companyId: id, archivedAt: null } }),
+      tx.deal.count({ where: { companyId: id, archivedAt: null } }),
+    ]);
+    if (contacts > 0 || deals > 0) {
+      throw new HttpError(400, "Archive this company's contacts and deals first", {
+        companyId: "Archive this company's contacts and deals first.",
+      });
+    }
     try {
       await tx.company.update({ where: { id }, data: { archivedAt: new Date() } });
     } catch (error) {

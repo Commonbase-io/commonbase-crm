@@ -138,7 +138,7 @@ model Contact {
   email      String?
   phone      String?
   title      String?
-  companyId  String?   @db.Uuid
+  companyId  String    @db.Uuid
   ownerId    String    @db.Uuid
   notes      String?
   archivedAt DateTime?
@@ -147,11 +147,12 @@ model Contact {
 
   org          Org           @relation(fields: [orgId], references: [id])
   owner        User          @relation("ContactOwner", fields: [ownerId, orgId], references: [id, orgId])
-  company      Company?      @relation(fields: [companyId, orgId], references: [id, orgId])
+  company      Company       @relation(fields: [companyId, orgId], references: [id, orgId])
   dealContacts DealContact[]
   noteRows     Note[]
 
   @@unique([id, orgId])
+  @@unique([id, orgId, companyId])
   @@index([orgId, archivedAt, lastName, firstName])
   @@index([orgId, email])
   @@index([orgId, companyId])
@@ -200,7 +201,7 @@ model Deal {
   amountCents       Int        @default(0)
   currency          String     @default("USD")
   stageId           String     @db.Uuid
-  companyId         String?    @db.Uuid
+  companyId         String     @db.Uuid
   ownerId           String     @db.Uuid
   expectedCloseDate DateTime?  @db.Date
   status            DealStatus @default(OPEN)
@@ -210,12 +211,13 @@ model Deal {
 
   org          Org           @relation(fields: [orgId], references: [id])
   stage        Stage         @relation(fields: [stageId, orgId], references: [id, orgId])
-  company      Company?      @relation(fields: [companyId, orgId], references: [id, orgId])
+  company      Company       @relation(fields: [companyId, orgId], references: [id, orgId])
   owner        User          @relation("DealOwner", fields: [ownerId, orgId], references: [id, orgId])
   dealContacts DealContact[]
   noteRows     Note[]
 
   @@unique([id, orgId])
+  @@unique([id, orgId, companyId])
   @@index([orgId, stageId, archivedAt])
   @@index([orgId, ownerId])
   @@index([orgId, companyId])
@@ -227,11 +229,12 @@ model DealContact {
   orgId     String   @db.Uuid
   dealId    String   @db.Uuid
   contactId String   @db.Uuid
+  companyId String   @db.Uuid
   createdAt DateTime @default(now())
 
   org     Org     @relation(fields: [orgId], references: [id])
-  deal    Deal    @relation(fields: [dealId, orgId], references: [id, orgId])
-  contact Contact @relation(fields: [contactId, orgId], references: [id, orgId])
+  deal    Deal    @relation(fields: [dealId, orgId, companyId], references: [id, orgId, companyId], onDelete: Restrict, onUpdate: Cascade)
+  contact Contact @relation(fields: [contactId, orgId, companyId], references: [id, orgId, companyId], onDelete: Restrict, onUpdate: Cascade)
 
   @@id([dealId, contactId])
   @@index([orgId, contactId])

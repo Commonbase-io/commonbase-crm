@@ -60,14 +60,31 @@ describe("database guards", () => {
     const a = await makeOrg({ name: "Org A", slug: "org-a", email: "a@example.com" });
     const b = await makeOrg({ name: "Org B", slug: "org-b", email: "b@example.com" });
     const stage = await admin.stage.findFirstOrThrow({ where: { orgId: a.org.id, name: "Lead" } });
-    const deal = await admin.deal.create({
-      data: { orgId: a.org.id, name: "Local", amountCents: 100, stageId: stage.id, ownerId: a.user.id },
+    const aCompany = await admin.company.create({
+      data: { orgId: a.org.id, name: "Local Co", ownerId: a.user.id },
+    });
+    const aContact = await admin.contact.create({
+      data: { orgId: a.org.id, firstName: "Local", lastName: "Person", companyId: aCompany.id, ownerId: a.user.id },
+    });
+    const deal = await admin.$transaction(async (tx) => {
+      const created = await tx.deal.create({
+        data: { orgId: a.org.id, name: "Local", amountCents: 100, stageId: stage.id, companyId: aCompany.id, ownerId: a.user.id },
+      });
+      await tx.dealContact.create({
+        data: { orgId: a.org.id, dealId: created.id, contactId: aContact.id, companyId: aCompany.id },
+      });
+      return created;
+    });
+    const bCompany = await admin.company.create({
+      data: { orgId: b.org.id, name: "Other Co", ownerId: b.user.id },
     });
     const contact = await admin.contact.create({
-      data: { orgId: b.org.id, firstName: "Other", lastName: "Org", ownerId: b.user.id },
+      data: { orgId: b.org.id, firstName: "Other", lastName: "Org", companyId: bCompany.id, ownerId: b.user.id },
     });
     await expect(
-      admin.dealContact.create({ data: { orgId: a.org.id, dealId: deal.id, contactId: contact.id } }),
+      admin.dealContact.create({
+        data: { orgId: a.org.id, dealId: deal.id, contactId: contact.id, companyId: aCompany.id },
+      }),
     ).rejects.toThrow(/foreign key/i);
   });
 

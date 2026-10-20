@@ -1,8 +1,9 @@
 import { writeAudit } from "@/lib/crm/audit";
+import { createCompanyTx } from "@/lib/crm/companies";
 import type { SessionUser } from "@/lib/auth/session";
-import { isPrismaNotFound, isUniqueViolation, withOrg, type Tx } from "@/lib/db";
+import { errorText, isPrismaNotFound, isUniqueViolation, withOrg, type Tx } from "@/lib/db";
 import { HttpError, NotFoundError } from "@/lib/errors";
-import type { ContactInput, ListQuery } from "@/lib/validation";
+import type { ContactCreateInput, ContactInput, ListQuery } from "@/lib/validation";
 
 const contactSelect = {
   id: true,
@@ -25,10 +26,10 @@ async function resolveOwner(tx: Tx, session: SessionUser, ownerId?: string) {
   return owner.id;
 }
 
-async function assertCompany(tx: Tx, companyId: string | null) {
-  if (!companyId) return;
+async function requireCompany(tx: Tx, companyId: string) {
   const company = await tx.company.findFirst({ where: { id: companyId, archivedAt: null }, select: { id: true } });
   if (!company) throw new NotFoundError();
+  return company.id;
 }
 
 async function assertEmailAvailable(tx: Tx, email: string | null, exceptId?: string) {
@@ -107,48 +108,82 @@ export async function getContact(session: SessionUser, id: string) {
   });
 }
 
-export async function createContact(session: SessionUser, input: ContactInput) {
-  try {
-    return await createContactInOrg(session, input);
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      throw new HttpError(400, "A contact with this email already exists", {
-        email: "A contact with this email already exists",
-      });
-    }
-    throw error;
-  }
+function duplicateEmail(): HttpError {
+  return new HttpError(400, "A contact with this email already exists", {
+    email: "A contact with this email already exists",
+  });
 }
 
-async function createContactInOrg(session: SessionUser, input: ContactInput) {
-  return withOrg(session.orgId, session.id, async (tx) => {
-    const ownerId = await resolveOwner(tx, session, input.ownerId);
-    await assertCompany(tx, input.companyId);
-    await assertEmailAvailable(tx, input.email);
-    const contact = await tx.contact.create({
-      data: {
-        orgId: session.orgId,
+export async function createContact(session: SessionUser, input: ContactCreateInput) {
+  try {
+    return await withOrg(session.orgId, session.id, async (tx) => {
+      if (input.company) {
+        const company = await createCompanyTx(tx, session, input.company);
+        return createContactTx(tx, session, {
+          firstName: input.firstName,
+          lastName: input.lastName,
+          email: input.email,
+          phone: input.phone,
+          title: input.title,
+          notes: input.notes,
+          ownerId: input.ownerId,
+          companyId: company.id,
+        });
+      }
+      if (!input.companyId) {
+        throw new HttpError(400, "Choose a company", { companyId: "Choose a company" });
+      }
+      return createContactTx(tx, session, {
         firstName: input.firstName,
         lastName: input.lastName,
         email: input.email,
         phone: input.phone,
         title: input.title,
-        companyId: input.companyId,
         notes: input.notes,
-        ownerId,
-      },
-      select: contactSelect,
+        ownerId: input.ownerId,
+        companyId: input.companyId,
+      });
     });
-    await writeAudit(tx, {
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      if (errorText(error).toLowerCase().includes("domain")) {
+        throw new HttpError(400, "A company with this domain already exists", {
+          domain: "A company with this domain already exists",
+        });
+      }
+      throw duplicateEmail();
+    }
+    throw error;
+  }
+}
+
+export async function createContactTx(tx: Tx, session: SessionUser, input: ContactInput) {
+  const ownerId = await resolveOwner(tx, session, input.ownerId);
+  const companyId = await requireCompany(tx, input.companyId);
+  await assertEmailAvailable(tx, input.email);
+  const contact = await tx.contact.create({
+    data: {
       orgId: session.orgId,
-      actorId: session.id,
-      action: "CREATE",
-      entityType: "contact",
-      entityId: contact.id,
-      metadata: { email: contact.email },
-    });
-    return contact;
+      firstName: input.firstName,
+      lastName: input.lastName,
+      email: input.email,
+      phone: input.phone,
+      title: input.title,
+      companyId,
+      notes: input.notes,
+      ownerId,
+    },
+    select: contactSelect,
   });
+  await writeAudit(tx, {
+    orgId: session.orgId,
+    actorId: session.id,
+    action: "CREATE",
+    entityType: "contact",
+    entityId: contact.id,
+    metadata: { email: contact.email },
+  });
+  return contact;
 }
 
 export async function updateContact(session: SessionUser, id: string, input: ContactInput) {
@@ -166,10 +201,21 @@ export async function updateContact(session: SessionUser, id: string, input: Con
 
 async function updateContactInOrg(session: SessionUser, id: string, input: ContactInput) {
   return withOrg(session.orgId, session.id, async (tx) => {
-    const current = await tx.contact.findFirst({ where: { id, archivedAt: null }, select: { id: true } });
+    const current = await tx.contact.findFirst({
+      where: { id, archivedAt: null },
+      select: { id: true, companyId: true },
+    });
     if (!current) throw new NotFoundError();
+    if (input.companyId !== current.companyId) {
+      const links = await tx.dealContact.count({ where: { contactId: id } });
+      if (links > 0) {
+        throw new HttpError(400, "Remove this contact from their deals before moving them to another company", {
+          companyId: "Remove this contact from their deals before moving them to another company",
+        });
+      }
+    }
     const ownerId = await resolveOwner(tx, session, input.ownerId);
-    await assertCompany(tx, input.companyId);
+    const companyId = await requireCompany(tx, input.companyId);
     await assertEmailAvailable(tx, input.email, id);
     try {
       const contact = await tx.contact.update({
@@ -180,7 +226,7 @@ async function updateContactInOrg(session: SessionUser, id: string, input: Conta
           email: input.email,
           phone: input.phone,
           title: input.title,
-          companyId: input.companyId,
+          companyId,
           notes: input.notes,
           ownerId,
         },
@@ -205,6 +251,17 @@ export async function archiveContact(session: SessionUser, id: string) {
   return withOrg(session.orgId, session.id, async (tx) => {
     const current = await tx.contact.findFirst({ where: { id, archivedAt: null }, select: { id: true } });
     if (!current) throw new NotFoundError();
+    const deals = await tx.deal.findMany({
+      where: { archivedAt: null, dealContacts: { some: { contactId: id } } },
+      select: { name: true, _count: { select: { dealContacts: true } } },
+    });
+    const sole = deals.filter((deal) => deal._count.dealContacts < 2);
+    if (sole.length > 0) {
+      const names = sole.map((deal) => deal.name).join(", ");
+      throw new HttpError(400, "This contact is the only person on a deal", {
+        contactId: `This contact is the only person on ${names}. Add another contact from the same company or archive the deal first.`,
+      });
+    }
     await tx.contact.update({ where: { id }, data: { archivedAt: new Date() } });
     await writeAudit(tx, {
       orgId: session.orgId,

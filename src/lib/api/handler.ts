@@ -78,6 +78,24 @@ export function withApi<TBody = undefined, TQuery = undefined>(
       if (text.includes("slug_taken")) {
         return json({ error: "Slug is already in use", fieldErrors: { slug: "Slug is already in use" } }, 400);
       }
+      if (text.includes("deal_requires_contact")) {
+        return json(
+          {
+            error: "Choose at least one contact at this company",
+            fieldErrors: { contactIds: "Choose at least one contact at this company" },
+          },
+          400,
+        );
+      }
+      if (text.includes("deal_contact_company_mismatch")) {
+        return json(
+          {
+            error: "Every contact must belong to the deal's company",
+            fieldErrors: { contactIds: "Every contact must belong to the deal's company" },
+          },
+          400,
+        );
+      }
       console.error(internalErrorSummary(error));
       return json({ error: "Internal error" }, 500);
     }

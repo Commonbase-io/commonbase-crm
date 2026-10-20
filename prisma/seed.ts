@@ -76,19 +76,21 @@ async function main() {
       ownerId: ben.id,
     },
   });
-  const deal = await db.deal.create({
-    data: {
-      orgId: client.id,
-      name: "Website refresh",
-      amountCents: 150000,
-      stageId: qualified.id,
-      companyId: company.id,
-      ownerId: ada.id,
-      status: "OPEN",
-    },
-  });
-  await db.dealContact.create({
-    data: { orgId: client.id, dealId: deal.id, contactId: contact.id },
+  await db.$transaction(async (tx) => {
+    const deal = await tx.deal.create({
+      data: {
+        orgId: client.id,
+        name: "Website refresh",
+        amountCents: 150000,
+        stageId: qualified.id,
+        companyId: company.id,
+        ownerId: ada.id,
+        status: "OPEN",
+      },
+    });
+    await tx.dealContact.create({
+      data: { orgId: client.id, dealId: deal.id, contactId: contact.id, companyId: company.id },
+    });
   });
   await db.note.create({
     data: {

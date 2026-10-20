@@ -171,8 +171,9 @@ function planContactRow(
   const email = normalizeEmail(values.email);
   if (values.email && (!email || !EMAIL_PATTERN.test(email))) errors.push("Enter a valid email");
   const domain = normalizeDomain(values.companyDomain);
-  if (values.companyDomain && (!domain || !DOMAIN_PATTERN.test(domain))) errors.push("Enter a domain like example.com");
-  if (domain && !byDomain.has(domain)) errors.push("No company with this domain in your organization");
+  if (!values.companyDomain) errors.push("Company is required");
+  else if (!domain || !DOMAIN_PATTERN.test(domain)) errors.push("Enter a domain like example.com");
+  else if (!byDomain.has(domain)) errors.push("No company with this domain in your organization");
   const stored = { ...values, email: email ?? "", companyDomain: domain ?? "" };
   if (email && emails.has(email)) {
     return { rowNumber, values: stored, status: "duplicate", errors: ["Duplicate email in this organization"] };
@@ -208,8 +209,8 @@ export async function importContacts(session: SessionUser, input: ImportInput) {
       }
       const domain = row.values.companyDomain || null;
       const companyId = domain ? byDomain.get(domain) : undefined;
-      if (domain && !companyId) {
-        rows.push({ ...row, status: "invalid", errors: ["No company with this domain in your organization"] });
+      if (!companyId) {
+        rows.push({ ...row, status: "invalid", errors: ["Company is required"] });
         continue;
       }
       const contactId = await insertContact(tx, {
@@ -219,7 +220,7 @@ export async function importContacts(session: SessionUser, input: ImportInput) {
         email,
         phone: row.values.phone || null,
         title: row.values.title || null,
-        companyId: companyId ?? null,
+        companyId,
         notes: row.values.notes || null,
         ownerId: session.id,
       });
@@ -286,7 +287,7 @@ type ContactInsert = {
   email: string | null;
   phone: string | null;
   title: string | null;
-  companyId: string | null;
+  companyId: string;
   notes: string | null;
   ownerId: string;
 };

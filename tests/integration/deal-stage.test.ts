@@ -12,15 +12,28 @@ describe("deal stage moves", () => {
     const { org, user } = await makeOrg({ name: "Deal Org", slug: "deal-org", email: "ada@example.com" });
     const stages = await admin.stage.findMany({ where: { orgId: org.id } });
     const byName = Object.fromEntries(stages.map((stage) => [stage.name, stage]));
-    const deal = await admin.deal.create({
-      data: {
-        orgId: org.id,
-        name: "Retainer",
-        amountCents: 50000,
-        stageId: byName.Lead.id,
-        ownerId: user.id,
-        status: "OPEN",
-      },
+    const company = await admin.company.create({
+      data: { orgId: org.id, name: "Retainer Co", ownerId: user.id },
+    });
+    const contact = await admin.contact.create({
+      data: { orgId: org.id, firstName: "Pat", lastName: "Buyer", companyId: company.id, ownerId: user.id },
+    });
+    const deal = await admin.$transaction(async (tx) => {
+      const created = await tx.deal.create({
+        data: {
+          orgId: org.id,
+          name: "Retainer",
+          amountCents: 50000,
+          stageId: byName.Lead.id,
+          companyId: company.id,
+          ownerId: user.id,
+          status: "OPEN",
+        },
+      });
+      await tx.dealContact.create({
+        data: { orgId: org.id, dealId: created.id, contactId: contact.id, companyId: company.id },
+      });
+      return created;
     });
     const signedIn = await call(login, "/api/auth/login", {
       method: "POST",
