@@ -557,6 +557,14 @@ isOneToOne: false
       } },
 "enqueue_job":
 { Args: { "p_dedupe_key"?: string,"p_payload"?: Json,"p_run_after"?: string,"p_tenant_id": string,"p_type": string }; Returns: string
+                           },
+"find_auth_user_id":
+{ Args: { "p_email": string }; Returns: string
+                           },
+"tenant_member_accounts":
+{ Args: { "p_tenant_id": string }; Returns: {
+              "email": string,"last_sign_in_at": string,"user_id": string
+            }[]
                            }
           }
           Enums: {

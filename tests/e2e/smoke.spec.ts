@@ -57,6 +57,7 @@ test("Commonbase staff choose between their explicit memberships", async ({ page
 test("team page lists members of this tenant only", async ({ page }) => {
   await signIn(page, "admin@brs-demo.example");
   await page.goto("/app/brs/settings/team");
-  await expect(page.getByText("Riley Rep (demo)")).toBeVisible();
-  await expect(page.getByText("Casey Rep (demo)")).toHaveCount(0);
+  const table = page.getByRole("table", { name: "Team members" });
+  await expect(table.getByText("Riley Rep (demo)", { exact: true })).toBeVisible();
+  await expect(table).not.toContainText("Casey Rep (demo)");
 });

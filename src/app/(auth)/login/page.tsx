@@ -23,7 +23,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </div>
           {error ? (
             <p role="alert" className="text-sm text-danger">
-              That email and password did not match.
+              {error === "link" ? "That link is invalid or has expired. Ask your admin to resend it." : "That email and password did not match."}
             </p>
           ) : null}
           <Button type="submit" className="w-full">

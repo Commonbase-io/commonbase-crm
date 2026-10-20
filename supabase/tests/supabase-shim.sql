@@ -46,6 +46,8 @@ create table if not exists auth.users (
   phone_change text,
   phone_change_token text,
   reauthentication_token text,
+  last_sign_in_at timestamptz,
+  invited_at timestamptz,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
